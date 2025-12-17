@@ -1,0 +1,9 @@
+{
+  "name": "GezginAI",
+  "description": "Chicago Pilot - Smart travel assistant and tour guide powered by Gemini 2.5 with real-time Search and Maps grounding.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ]
+}
