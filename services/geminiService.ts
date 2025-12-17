@@ -22,7 +22,7 @@ export const sendMessageToGemini = async (
 ): Promise<{ text: string; groundingMetadata?: any }> => {
   
   let systemInstruction = "";
-  let responseMimeType = "text/plain";
+  let responseMimeType: string | undefined = undefined;
 
   if (mode === 'PLANNER') {
     systemInstruction = `
@@ -46,11 +46,12 @@ export const sendMessageToGemini = async (
       4. Keep it professional yet friendly.
     `;
   } else if (mode === 'BRIEFING') {
-     // MICRO-BRIEFING - NOW JSON
-     responseMimeType = "application/json";
+     // MICRO-BRIEFING
+     // Note: We do NOT set responseMimeType to 'application/json' because it conflicts with tools (Google Search).
+     // We ask for raw JSON in the system instruction instead.
      systemInstruction = `
-       Role: Logistics Officer.
-       Task: Create a JSON MICRO-BRIEFING for tomorrow.
+       Role: Elite Travel Logistics Officer.
+       Task: Create a highly actionable JSON INTELLIGENCE BRIEFING for tomorrow's itinerary.
        
        Destination: ${tripContext.destination}
        Itinerary:
@@ -58,20 +59,25 @@ export const sendMessageToGemini = async (
 
        You MUST return a JSON object with this exact schema:
        {
-         "headline": "Short catchy title (e.g. Chicago Tomorrow)",
+         "headline": "Short, catchy, energetic title (e.g. 'Operation: Downtown Chicago')",
+         "summary": "2-3 sentences summarizing the vibe of the day (e.g. 'Heavy walking day focused on art. Expect crowds at noon.')",
          "weather": {
-           "temp": "Temperature range (e.g. 15°C)",
+           "temp": "Temperature range (e.g. 15-18°C)",
            "condition": "Short condition (e.g. Windy & Sunny)",
            "emoji": "🌤",
-           "advice": "One short sentence advice (e.g. Bring a windbreaker)."
+           "advice": "Crucial weather advice (e.g. 'The wind off the lake is cold, wear layers')."
          },
          "dressCode": {
-            "title": "Style (e.g. Smart Casual)",
-            "description": "Short explanation based on venues."
+            "title": "Style (e.g. Smart Casual / Walking Gear)",
+            "description": "Specific advice based on venues (e.g. 'Sneakers for the walk, but bring a blazer for the jazz club')."
          },
-         "packing": ["Item 1", "Item 2", "Item 3"],
-         "transport": "One critical tip for ${preferences?.transport} in this city."
+         "packing": ["Item 1 (Reason)", "Item 2 (Reason)", "Item 3 (Reason)"],
+         "transport": "One critical tip for ${preferences?.transport} in this specific area.",
+         "culturalTip": "A local etiquette tip or hidden fact relevant to these specific stops.",
+         "safetyTip": "A specific thing to watch out for (e.g. 'Pickpockets near the Bean', or 'Safe area but dim lighting at night')."
        }
+
+       IMPORTANT: Return ONLY the raw JSON string. Do not use Markdown code blocks.
      `;
   } else {
     // TOUR GUIDE (WISE) MODE - STORYTELLER PERSONA

@@ -224,17 +224,28 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       const response = await sendMessageToGemini(
         [], "Generate daily prep briefing", plan, 'BRIEFING', preferences
       );
-      const parsedData = JSON.parse(response.text) as BriefingData;
+      
+      let text = response.text;
+      // Robust JSON Parsing: Strip markdown code blocks if present
+      // Matches ```json [content] ``` or ``` [content] ```
+      if (text.includes('```')) {
+         text = text.replace(/```json/g, '').replace(/```/g, '');
+      }
+      
+      const parsedData = JSON.parse(text) as BriefingData;
       setBriefingData(parsedData);
     } catch (e) {
       console.error(e);
       // Fallback if parsing fails
       setBriefingData({
           headline: "Briefing Unavailable",
+          summary: "Could not retrieve intelligence.",
           weather: { temp: "--", condition: "Unknown", emoji: "🤔", advice: "Check local weather app." },
           dressCode: { title: "Casual", description: "Dress comfortably." },
           packing: ["Phone", "Wallet"],
-          transport: "Check maps."
+          transport: "Check maps.",
+          culturalTip: "Be polite.",
+          safetyTip: "Stay aware."
       });
     } finally {
       setIsGeneratingBriefing(false);
@@ -354,7 +365,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       {/* BRIEFING MODAL */}
       {isBriefingOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-up">
+          <div className="bg-white dark:bg-gray-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-up">
             
             {/* Modal Header */}
             <div className="bg-white dark:bg-gray-800 p-6 pb-2 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
@@ -362,7 +373,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                  <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
                     {briefingData?.headline || "Loading Briefing..."}
                  </h2>
-                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-1">Daily Intelligence</p>
+                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-1">Daily Intelligence Report</p>
               </div>
               <button onClick={() => setIsBriefingOpen(false)} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 rounded-full p-2 transition-colors text-gray-600 dark:text-white">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -380,26 +391,30 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                     <p className="text-gray-500 dark:text-gray-400 text-sm font-medium animate-pulse">Scanning itinerary & satellites...</p>
                  </div>
                ) : briefingData ? (
-                 <div className="space-y-4">
+                 <div className="space-y-6">
                     
+                    {/* 0. Summary Narrative */}
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-l-4 border-indigo-500 shadow-sm">
+                        <h4 className="font-bold text-gray-900 dark:text-white text-sm mb-1">Executive Summary</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed italic">"{briefingData.summary}"</p>
+                    </div>
+
                     {/* 1. Weather Hero Card */}
                     <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden">
                        <div className="relative z-10 flex justify-between items-center">
                           <div>
                              <p className="text-blue-100 text-xs font-bold uppercase mb-1">Forecast</p>
-                             <div className="text-3xl font-bold">{briefingData.weather.temp}</div>
+                             <div className="text-4xl font-bold">{briefingData.weather.temp}</div>
                              <div className="text-sm font-medium opacity-90">{briefingData.weather.condition}</div>
                              <div className="mt-3 text-xs bg-white/20 backdrop-blur rounded-lg px-2 py-1 inline-block">
                                 💡 {briefingData.weather.advice}
                              </div>
                           </div>
-                          <div className="text-6xl">{briefingData.weather.emoji}</div>
+                          <div className="text-7xl">{briefingData.weather.emoji}</div>
                        </div>
-                       {/* Deco Circle */}
-                       <div className="absolute -right-4 -bottom-10 w-32 h-32 bg-white/10 rounded-full blur-xl"></div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* 2. Dress Code */}
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
                             <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-3 text-lg">👔</div>
@@ -415,23 +430,49 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                         </div>
                     </div>
 
-                    {/* 4. Packing List */}
+                    {/* 4. Packing List (Checklist Style) */}
                     <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
                         <div className="flex items-center gap-2 mb-3">
                            <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">🎒</div>
-                           <h3 className="font-bold text-gray-900 dark:text-white text-sm">Pack Essentials</h3>
+                           <h3 className="font-bold text-gray-900 dark:text-white text-sm">Deploy Gear</h3>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-1 gap-2">
                            {briefingData.packing.map((item, idx) => (
-                             <span key={idx} className="px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold border border-gray-200 dark:border-gray-600">
-                                {item}
-                             </span>
+                             <label key={idx} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg cursor-pointer group">
+                                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                                <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">{item}</span>
+                             </label>
                            ))}
                         </div>
                     </div>
 
+                    {/* 5. Culture & Safety (Warnings) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {/* Culture */}
+                       <div className="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-xl border border-teal-100 dark:border-teal-900">
+                          <h4 className="flex items-center gap-2 font-bold text-teal-800 dark:text-teal-200 text-sm mb-1">
+                             <span>🤝</span> Cultural Intel
+                          </h4>
+                          <p className="text-xs text-teal-700 dark:text-teal-300 leading-relaxed">{briefingData.culturalTip}</p>
+                       </div>
+                       
+                       {/* Safety */}
+                       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-900">
+                          <h4 className="flex items-center gap-2 font-bold text-red-800 dark:text-red-200 text-sm mb-1">
+                             <span>🛡️</span> Safety Alert
+                          </h4>
+                          <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">{briefingData.safetyTip}</p>
+                       </div>
+                    </div>
+
                  </div>
                ) : null}
+            </div>
+            
+            <div className="p-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 text-center">
+               <button onClick={() => setIsBriefingOpen(false)} className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold">
+                  Acknowledge & Close
+               </button>
             </div>
           </div>
         </div>

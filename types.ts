@@ -127,6 +127,7 @@ export interface PlanInsight {
 
 export interface BriefingData {
   headline: string;
+  summary: string; // Narrative overview of the day
   weather: {
     temp: string;
     condition: string;
@@ -139,4 +140,6 @@ export interface BriefingData {
   };
   packing: string[]; // List of items
   transport: string;
+  culturalTip: string; // Etiquette or fun fact
+  safetyTip: string; // What to watch out for
 }
