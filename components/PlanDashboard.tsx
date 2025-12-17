@@ -481,102 +481,99 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       {/* LEFT: Itinerary View */}
       <div className="w-full md:w-1/3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
         
-        {/* Header */}
-        <div className="bg-white dark:bg-gray-800 z-10 shadow-sm transition-colors">
-          <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-start gap-2">
-                
-                {/* Back / New Plan Button */}
-                <button 
-                  onClick={onNewPlan}
-                  className="mt-1 p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
-                  title="Create New Plan"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                </button>
+        {/* COMPACT Header */}
+        <div className="bg-white dark:bg-gray-800 z-10 shadow-sm transition-colors border-b border-gray-100 dark:border-gray-700">
+          <div className="p-3">
+            
+            {/* Top Row: Buttons | Title | Profile */}
+            <div className="flex items-center gap-3 mb-3">
+                {/* Buttons Group */}
+                <div className="flex gap-1">
+                  <button 
+                    onClick={onNewPlan}
+                    className="p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
+                    title="New Plan"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  </button>
 
-                {/* Drafts Button */}
-                <button 
-                  onClick={() => setIsDraftsOpen(true)}
-                  className="mt-1 p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-amber-100 hover:text-amber-600 transition-colors relative"
-                  title="Open Draft Plans"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
-                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{drafts.length}</span>
-                </button>
-
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{plan.destination}</h1>
-                  <p className="font-medium text-indigo-600 dark:text-indigo-400 text-xs">
-                     ✨ {preferences.interests.length} Vibe Matches
-                  </p>
+                  <button 
+                    onClick={() => setIsDraftsOpen(true)}
+                    className="p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 hover:bg-amber-100 hover:text-amber-600 transition-colors relative"
+                    title="Drafts"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
+                    {drafts.length > 0 && <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white text-[8px] font-bold w-3 h-3 rounded-full flex items-center justify-center">{drafts.length}</span>}
+                  </button>
                 </div>
-              </div>
-              <button onClick={onOpenProfile} className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 border-2 border-white dark:border-gray-700 overflow-hidden hover:opacity-80">
-                <img src={userProfile.avatarUrl} alt="Profile" className="w-full h-full object-cover"/>
-              </button>
+
+                {/* Title Info */}
+                <div className="flex-1 min-w-0">
+                     <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate leading-tight">{plan.destination}</h1>
+                     {/* Stats Row */}
+                     <div className="flex items-center gap-2 mt-1">
+                         <div className="flex items-center gap-1 text-[10px] text-gray-600 dark:text-gray-400">
+                             <span className="text-[10px]">👣</span> 
+                             <span className="font-semibold">{totalDayDistance.toFixed(1)} mi</span>
+                         </div>
+                         <div className="w-px h-3 bg-gray-300 dark:bg-gray-600"></div>
+                         <div className="flex items-center gap-1 text-[10px] text-gray-600 dark:text-gray-400">
+                             <span className="text-[10px]">💸</span> 
+                             <span className="font-semibold">~${estimatedDayBudget}</span>
+                         </div>
+                         <div className="w-px h-3 bg-gray-300 dark:bg-gray-600"></div>
+                         <div className="flex items-center gap-1 text-[10px] text-gray-600 dark:text-gray-400">
+                             <span className="text-[10px]">🚩</span> 
+                             <span className="font-semibold">{stopCount} Stops</span>
+                         </div>
+                     </div>
+                </div>
+
+                {/* Profile */}
+                 <button onClick={onOpenProfile} className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 border-2 border-white dark:border-gray-700 overflow-hidden hover:opacity-80 shrink-0">
+                    <img src={userProfile.avatarUrl} alt="Profile" className="w-full h-full object-cover"/>
+                 </button>
             </div>
 
-            {/* DAY SELECTOR */}
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-              {days.map(day => (
-                <button 
-                  key={day}
-                  onClick={() => setActiveDay(day)}
-                  className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-                    activeDay === day 
-                    ? 'bg-indigo-600 text-white shadow-md' 
-                    : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  Day {day}
-                </button>
-              ))}
+            {/* Second Row: Days & View Toggle */}
+            <div className="flex justify-between items-center gap-2 mb-2">
+                {/* Days - Scrollable */}
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide flex-1">
+                     {days.map(day => (
+                        <button 
+                          key={day} 
+                          onClick={() => setActiveDay(day)} 
+                          className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                            activeDay === day 
+                            ? 'bg-indigo-600 text-white shadow-md' 
+                            : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                            Day {day}
+                        </button>
+                     ))}
+                </div>
+                
+                {/* View Toggle - Compact Icons */}
+                <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 shrink-0">
+                    <button 
+                        onClick={() => setViewMode('list')} 
+                        className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}
+                        title="List View"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('map')} 
+                        className={`p-1.5 rounded-md transition-all ${viewMode === 'map' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}
+                        title="Map View"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+                    </button>
+                </div>
             </div>
-
-            {/* DAY STATS SUMMARY BAR */}
-            <div className="mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs">
-               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                  <span className="text-base">👣</span>
-                  <div className="flex flex-col leading-none">
-                     <span className="font-bold">{totalDayDistance.toFixed(1)} mi</span>
-                     <span className="text-[9px] opacity-70">Distance</span>
-                  </div>
-               </div>
-               <div className="w-px h-6 bg-gray-200 dark:bg-gray-600"></div>
-               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                  <span className="text-base">💸</span>
-                  <div className="flex flex-col leading-none">
-                     <span className="font-bold">~${estimatedDayBudget}</span>
-                     <span className="text-[9px] opacity-70">Est. Budget</span>
-                  </div>
-               </div>
-               <div className="w-px h-6 bg-gray-200 dark:bg-gray-600"></div>
-               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                  <span className="text-base">🚩</span>
-                  <div className="flex flex-col leading-none">
-                     <span className="font-bold">{stopCount}</span>
-                     <span className="text-[9px] opacity-70">Stops</span>
-                  </div>
-               </div>
-            </div>
-
-            {/* View Toggles */}
-            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-               <button 
-                 onClick={() => setViewMode('list')}
-                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-               >
-                 List View
-               </button>
-               <button 
-                 onClick={() => setViewMode('map')}
-                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'map' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-               >
-                 Map View
-               </button>
-            </div>
+            
+            {/* REMOVED THIRD ROW STATS BAR */}
           </div>
         </div>
 
@@ -780,4 +777,4 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       </div>
     </div>
   );
-};
+}
