@@ -35,19 +35,24 @@ function App() {
     }
   }, [isDarkMode]);
   
-  // Mock User Data
-  const userProfile: UserProfile = {
+  // User Profile State (Now dynamic)
+  const [userProfile, setUserProfile] = useState<UserProfile>({
     name: "Demo User",
     email: "demo@gezginai.com",
     avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop",
     memberSince: "March 2024",
     stats: {
       tripsPlanned: pastTrips.length + 1,
-      placesVisited: collectedStamps.length + 12,
+      placesVisited: 12,
       photosTaken: 48
     },
-    stamps: collectedStamps // Connected to state
-  };
+    stamps: [] 
+  });
+
+  // Sync collected stamps to profile
+  useEffect(() => {
+    setUserProfile(prev => ({ ...prev, stamps: collectedStamps }));
+  }, [collectedStamps]);
 
   // Initial Mock Data (Chicago Pilot) - Enhanced with IMAGES and ID
   const initialMockPlan: TripPlan = {
@@ -210,7 +215,15 @@ function App() {
      }
   };
 
-  const handleLogin = () => {
+  const handleLogin = (userData?: { name: string; email: string }) => {
+    if (userData) {
+      setUserProfile(prev => ({
+        ...prev,
+        name: userData.name,
+        email: userData.email,
+        // Reset or keep stats? Keeping stats for mock continuity
+      }));
+    }
     setPhase('ONBOARDING');
   };
 
@@ -224,7 +237,7 @@ function App() {
     if (prefs.city.toLowerCase().includes('chicago')) {
        generatedActivities = initialMockPlan.activities.map(a => ({...a}));
     } else {
-       // Generic template for other cities so it's not empty, but not Chicago data
+       // Generic template for other cities
        generatedActivities = [
          { 
             id: '1', day: 1, time: "14:00", 
@@ -254,7 +267,6 @@ function App() {
     }
     
     // DYNAMIC BUDGET ADJUSTMENT
-    // This simulates how the AI would adjust recommendations based on budget
     const budgetMultiplier = prefs.budget === 'luxury' ? 3 : prefs.budget === 'budget' ? 0.5 : 1;
 
     generatedActivities = generatedActivities.map(activity => {
@@ -324,13 +336,10 @@ function App() {
     const updatedDrafts = drafts.filter(d => d.id !== planId);
     setDrafts(updatedDrafts);
 
-    // If we deleted the currently active plan
     if (tripPlan.id === planId) {
       if (updatedDrafts.length > 0) {
-        // Load the most recent remaining draft
         setTripPlan(updatedDrafts[0]);
       } else {
-        // No drafts left, go back to onboarding
         setPhase('ONBOARDING');
       }
     }
