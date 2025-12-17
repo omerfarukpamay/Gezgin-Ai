@@ -117,6 +117,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   const handleDateClick = (day: number) => {
     const selectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    // Prevent selecting past dates
+    if (selectedDate < today) return;
+
     if (!startDate || (startDate && endDate)) {
       setStartDate(selectedDate);
       setEndDate(null);
@@ -131,7 +137,13 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   };
 
   const changeMonth = (offset: number) => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1);
+    const today = new Date();
+    // Don't go back further than current month
+    if (offset < 0 && newDate.getMonth() < today.getMonth() && newDate.getFullYear() === today.getFullYear()) {
+        return;
+    }
+    setCurrentDate(newDate);
   };
 
   useEffect(() => {
@@ -270,7 +282,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                   <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
                     {/* Calendar UI */}
                     <div className="flex justify-between items-center mb-4">
-                      <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600">
+                      <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 disabled:opacity-30">
                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                       </button>
                       <div className="font-bold text-gray-800 text-lg">
@@ -289,13 +301,25 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                       ))}
                       {Array.from({ length: getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth()) }, (_, i) => i + 1).map(day => {
                         const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                        const today = new Date();
+                        today.setHours(0,0,0,0);
+                        const isPast = date < today;
+
                         const isStart = startDate && date.getTime() === startDate.getTime();
                         const isEnd = endDate && date.getTime() === endDate.getTime();
                         const isInRange = startDate && endDate && date > startDate && date < endDate;
-                        let classes = "h-9 w-full flex items-center justify-center text-sm rounded-lg transition-all cursor-pointer ";
-                        if (isStart || isEnd) classes += "bg-indigo-600 text-white font-bold shadow-md transform scale-105";
-                        else if (isInRange) classes += "bg-indigo-50 text-indigo-700 font-medium";
-                        else classes += "text-gray-700 hover:bg-gray-100";
+                        
+                        let classes = "h-9 w-full flex items-center justify-center text-sm rounded-lg transition-all ";
+                        
+                        if (isPast) {
+                            classes += "text-gray-300 cursor-not-allowed bg-gray-50/50 ";
+                        } else {
+                            classes += "cursor-pointer ";
+                            if (isStart || isEnd) classes += "bg-indigo-600 text-white font-bold shadow-md transform scale-105 ";
+                            else if (isInRange) classes += "bg-indigo-50 text-indigo-700 font-medium ";
+                            else classes += "text-gray-700 hover:bg-gray-100 ";
+                        }
+                        
                         return <div key={day} onClick={() => handleDateClick(day)} className={classes}>{day}</div>;
                       })}
                     </div>

@@ -227,6 +227,23 @@ function App() {
     setPhase('ONBOARDING');
   };
 
+  const handleUpdateAvatar = (newUrl: string) => {
+    setUserProfile(prev => ({ ...prev, avatarUrl: newUrl }));
+    
+    // Optional: Attempt to persist to localStorage if using mock user
+    try {
+        const STORAGE_KEY = 'gezgin_mock_user';
+        const storedData = localStorage.getItem(STORAGE_KEY);
+        if (storedData) {
+            const userData = JSON.parse(storedData);
+            userData.avatarUrl = newUrl; 
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+        }
+    } catch (e) {
+        console.warn("Could not persist avatar to local storage (likely too large).");
+    }
+  };
+
   const handleOnboardingComplete = (prefs: UserPreferences) => {
     setPreferences(prefs);
     
@@ -375,6 +392,7 @@ function App() {
           onBack={() => setPhase('PLANNING')}
           onOpenSettings={() => setPhase('SETTINGS')}
           onLogout={() => setPhase('AUTH')}
+          onUpdateAvatar={handleUpdateAvatar}
         />
       )}
 
