@@ -102,7 +102,10 @@ export interface Activity {
   imageUrl?: string; // New: Visual Richness
   lat?: number;
   lng?: number;
-  type?: ActivityType; 
+  type?: ActivityType;
+  // NEW: Cost & Price Level
+  priceLevel?: string; // e.g. '$', '$$', 'Free'
+  estimatedCost?: number; // e.g. 25
 }
 
 export interface TripPlan {

@@ -67,7 +67,9 @@ function App() {
         type: 'nature',
         lat: 41.8826,
         lng: -87.6226,
-        imageUrl: "https://images.unsplash.com/photo-1596726857999-52d334584285?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1596726857999-52d334584285?q=80&w=300&auto=format&fit=crop",
+        priceLevel: 'Free',
+        estimatedCost: 0
       },
       { 
         id: '2', 
@@ -80,7 +82,9 @@ function App() {
         type: 'culture',
         lat: 41.8796,
         lng: -87.6237,
-        imageUrl: "https://images.unsplash.com/photo-1563297241-113331b2628a?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1563297241-113331b2628a?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$$',
+        estimatedCost: 35
       },
       { 
         id: '3', 
@@ -93,7 +97,9 @@ function App() {
         type: 'food',
         lat: 41.8781,
         lng: -87.6330,
-        imageUrl: "https://images.unsplash.com/photo-1595295333158-4742f28fbd85?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1595295333158-4742f28fbd85?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$$',
+        estimatedCost: 30
       },
       { 
         id: '4', 
@@ -105,7 +111,9 @@ function App() {
         type: 'nature',
         lat: 41.8885,
         lng: -87.6288,
-        imageUrl: "https://images.unsplash.com/photo-1494522855154-9297ac14b55f?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1494522855154-9297ac14b55f?q=80&w=300&auto=format&fit=crop",
+        priceLevel: 'Free',
+        estimatedCost: 0
       },
       { 
         id: '5', 
@@ -118,7 +126,9 @@ function App() {
         type: 'nightlife',
         lat: 41.8710,
         lng: -87.6295,
-        imageUrl: "https://images.unsplash.com/photo-1511192336575-5a79af67a629?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1511192336575-5a79af67a629?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$$',
+        estimatedCost: 40
       },
       // Day 2 Example
       { 
@@ -131,7 +141,9 @@ function App() {
         type: 'nature',
         lat: 41.8917, 
         lng: -87.6043,
-        imageUrl: "https://images.unsplash.com/photo-1619468160877-e29f37f37803?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1619468160877-e29f37f37803?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$$',
+        estimatedCost: 20
       },
       {
         id: '7',
@@ -143,7 +155,9 @@ function App() {
         type: 'food',
         lat: 41.8935,
         lng: -87.6301,
-        imageUrl: "https://images.unsplash.com/photo-1621855293488-81d77b8f9e20?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1621855293488-81d77b8f9e20?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$',
+        estimatedCost: 15
       },
       {
         id: '8',
@@ -155,7 +169,9 @@ function App() {
         type: 'shopping',
         lat: 41.8948,
         lng: -87.6242,
-        imageUrl: "https://images.unsplash.com/photo-1669920677579-2d4e7498c366?q=80&w=300&auto=format&fit=crop"
+        imageUrl: "https://images.unsplash.com/photo-1669920677579-2d4e7498c366?q=80&w=300&auto=format&fit=crop",
+        priceLevel: '$$$',
+        estimatedCost: 150
       }
     ]
   };
@@ -215,25 +231,58 @@ function App() {
             activity: `Arrive in ${prefs.city}`, 
             location: "Airport / Central Station", 
             status: 'pending', type: 'general',
-            imageUrl: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=300"
+            imageUrl: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=300",
+            priceLevel: 'Free', estimatedCost: 0
          },
          { 
             id: '2', day: 1, time: "16:00", 
             activity: "Hotel Check-in & Refresh", 
             location: "City Center", 
             status: 'pending', type: 'general',
-            imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=300"
+            imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=300",
+            priceLevel: '$$$', estimatedCost: 200
          },
          { 
             id: '3', day: 1, time: "19:00", 
             activity: "Welcome Dinner", 
             location: "Local Favorite", 
             status: 'pending', type: 'food',
-            imageUrl: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=300"
+            imageUrl: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=300",
+            priceLevel: '$$', estimatedCost: 60
          }
        ];
     }
     
+    // DYNAMIC BUDGET ADJUSTMENT
+    // This simulates how the AI would adjust recommendations based on budget
+    const budgetMultiplier = prefs.budget === 'luxury' ? 3 : prefs.budget === 'budget' ? 0.5 : 1;
+
+    generatedActivities = generatedActivities.map(activity => {
+      // Don't change free items
+      if (!activity.estimatedCost || activity.estimatedCost === 0) return activity;
+
+      const newCost = Math.round(activity.estimatedCost * budgetMultiplier);
+      
+      let newPriceLevel = activity.priceLevel;
+      if (prefs.budget === 'luxury') {
+         // Shift price levels up
+         if (newPriceLevel === '$') newPriceLevel = '$$';
+         else if (newPriceLevel === '$$') newPriceLevel = '$$$';
+         else if (newPriceLevel === '$$$') newPriceLevel = '$$$$';
+      } else if (prefs.budget === 'budget') {
+         // Shift price levels down
+         if (newPriceLevel === '$$$$') newPriceLevel = '$$$';
+         else if (newPriceLevel === '$$$') newPriceLevel = '$$';
+         else if (newPriceLevel === '$$') newPriceLevel = '$';
+      }
+
+      return {
+        ...activity,
+        estimatedCost: newCost,
+        priceLevel: newPriceLevel
+      };
+    });
+
     const newPlan: TripPlan = {
       id: Date.now().toString(),
       createdAt: Date.now(),

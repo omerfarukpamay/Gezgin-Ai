@@ -227,6 +227,22 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     }
   };
 
+  // Calculate Summary Metrics for Active Day
+  let totalDistance = 0;
+  let totalCost = 0;
+  
+  for (let i = 0; i < filteredActivities.length; i++) {
+     const act = filteredActivities[i];
+     totalCost += act.estimatedCost || 0;
+     
+     if (i < filteredActivities.length - 1) {
+        const next = filteredActivities[i+1];
+        if (act.lat && act.lng && next.lat && next.lng) {
+            totalDistance += parseFloat(calculateDistance(act.lat, act.lng, next.lat, next.lng));
+        }
+     }
+  }
+
   return (
     <div className="h-[100dvh] bg-gray-100 dark:bg-gray-900 flex flex-col md:flex-row p-4 gap-4 overflow-hidden transition-colors duration-300 relative">
       
@@ -453,6 +469,33 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
               ))}
             </div>
 
+            {/* SUMMARY STATS BAR */}
+            <div className="bg-white dark:bg-gray-750 rounded-xl p-3 mb-4 flex items-center justify-between shadow-sm border border-gray-100 dark:border-gray-600 mx-1">
+                <div className="flex items-center gap-2">
+                    <span className="text-lg">🚶</span>
+                    <div>
+                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Distance</p>
+                         <p className="text-xs font-bold text-gray-800 dark:text-white">{totalDistance.toFixed(1)} mi</p>
+                    </div>
+                </div>
+                <div className="w-px h-6 bg-gray-100 dark:bg-gray-600"></div>
+                <div className="flex items-center gap-2">
+                    <span className="text-lg">💰</span>
+                    <div>
+                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Budget</p>
+                         <p className="text-xs font-bold text-gray-800 dark:text-white">~${totalCost} est.</p>
+                    </div>
+                </div>
+                <div className="w-px h-6 bg-gray-100 dark:bg-gray-600"></div>
+                <div className="flex items-center gap-2">
+                    <span className="text-lg">🛑</span>
+                    <div>
+                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Stops</p>
+                         <p className="text-xs font-bold text-gray-800 dark:text-white">{filteredActivities.length} Stops</p>
+                    </div>
+                </div>
+            </div>
+
             {/* View Toggles */}
             <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
                <button 
@@ -570,7 +613,13 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                                     }`}>
                                     {item.type || 'General'}
                                  </span>
-                                 <h3 className="font-bold text-sm dark:text-gray-200 leading-tight line-clamp-2">{item.activity}</h3>
+                                 
+                                 {/* PRICE BADGE */}
+                                 <span className="ml-2 text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                                    {item.priceLevel || 'Free'}
+                                 </span>
+
+                                 <h3 className="font-bold text-sm dark:text-gray-200 leading-tight line-clamp-2 mt-1">{item.activity}</h3>
                                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">{item.location}</p>
                              </div>
                              
