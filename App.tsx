@@ -372,6 +372,7 @@ function App() {
         <PlanDashboard 
           plan={tripPlan} 
           preferences={preferences} 
+          userProfile={userProfile}
           onStartTour={handleStartTour} 
           onOpenProfile={() => setPhase('PROFILE')}
           onToggleFavorite={handleToggleFavorite}

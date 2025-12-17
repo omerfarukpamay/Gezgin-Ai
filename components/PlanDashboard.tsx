@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TripPlan, UserPreferences, PlanInsight, Activity, BriefingData } from '../types';
+import { TripPlan, UserPreferences, PlanInsight, Activity, BriefingData, UserProfile } from '../types';
 import { ChatInterface } from './ChatInterface';
 import { sendMessageToGemini } from '../services/geminiService';
 
@@ -13,6 +13,7 @@ declare global {
 interface PlanDashboardProps {
   plan: TripPlan;
   preferences: UserPreferences;
+  userProfile: UserProfile;
   onStartTour: (updatedPlan: TripPlan) => void;
   onOpenProfile: () => void;
   onToggleFavorite: (activity: Activity) => void;
@@ -39,9 +40,36 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return d.toFixed(1);
 };
 
+// Helper to estimate cost based on activity type
+const getEstimatedCost = (type?: string): number => {
+  switch (type) {
+    case 'food': return 35; // Average meal
+    case 'culture': return 25; // Museum ticket
+    case 'nightlife': return 50; // Drinks/Cover
+    case 'shopping': return 0; // Spending is variable, base is 0
+    case 'nature': return 0; // Parks usually free
+    case 'sport': return 40; // Tickets
+    default: return 0;
+  }
+};
+
+// Helper to get Price Label
+const getPriceLabel = (type?: string): string => {
+   switch (type) {
+    case 'nature': return 'Free';
+    case 'general': return 'Free';
+    case 'food': return '$$';
+    case 'culture': return '$$';
+    case 'nightlife': return '$$$';
+    case 'shopping': return '$$$';
+    default: return 'Free';
+  }
+};
+
 export const PlanDashboard: React.FC<PlanDashboardProps> = ({ 
   plan: initialPlan, 
   preferences, 
+  userProfile,
   onStartTour, 
   onOpenProfile,
   onToggleFavorite,
@@ -114,6 +142,19 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   // Filter activities by day
   const filteredActivities = plan.activities.filter(a => (a.day || 1) === activeDay);
   
+  // Calculate Day Stats
+  let totalDayDistance = 0;
+  for (let i = 0; i < filteredActivities.length - 1; i++) {
+     const curr = filteredActivities[i];
+     const next = filteredActivities[i+1];
+     if (curr.lat && curr.lng && next.lat && next.lng) {
+        totalDayDistance += parseFloat(calculateDistance(curr.lat, curr.lng, next.lat, next.lng));
+     }
+  }
+  
+  const estimatedDayBudget = filteredActivities.reduce((acc, act) => acc + getEstimatedCost(act.type), 0);
+  const stopCount = filteredActivities.length;
+
   // Get unique days
   const days = Array.from(new Set(plan.activities.map(a => a.day || 1))).sort();
 
@@ -226,22 +267,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       default: return 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=200';
     }
   };
-
-  // Calculate Summary Metrics for Active Day
-  let totalDistance = 0;
-  let totalCost = 0;
-  
-  for (let i = 0; i < filteredActivities.length; i++) {
-     const act = filteredActivities[i];
-     totalCost += act.estimatedCost || 0;
-     
-     if (i < filteredActivities.length - 1) {
-        const next = filteredActivities[i+1];
-        if (act.lat && act.lng && next.lat && next.lng) {
-            totalDistance += parseFloat(calculateDistance(act.lat, act.lng, next.lat, next.lng));
-        }
-     }
-  }
 
   return (
     <div className="h-[100dvh] bg-gray-100 dark:bg-gray-900 flex flex-col md:flex-row p-4 gap-4 overflow-hidden transition-colors duration-300 relative">
@@ -448,7 +473,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 </div>
               </div>
               <button onClick={onOpenProfile} className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 border-2 border-white dark:border-gray-700 overflow-hidden hover:opacity-80">
-                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop" alt="Profile" className="w-full h-full object-cover"/>
+                <img src={userProfile.avatarUrl} alt="Profile" className="w-full h-full object-cover"/>
               </button>
             </div>
 
@@ -469,31 +494,31 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
               ))}
             </div>
 
-            {/* SUMMARY STATS BAR */}
-            <div className="bg-white dark:bg-gray-750 rounded-xl p-3 mb-4 flex items-center justify-between shadow-sm border border-gray-100 dark:border-gray-600 mx-1">
-                <div className="flex items-center gap-2">
-                    <span className="text-lg">🚶</span>
-                    <div>
-                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Distance</p>
-                         <p className="text-xs font-bold text-gray-800 dark:text-white">{totalDistance.toFixed(1)} mi</p>
-                    </div>
-                </div>
-                <div className="w-px h-6 bg-gray-100 dark:bg-gray-600"></div>
-                <div className="flex items-center gap-2">
-                    <span className="text-lg">💰</span>
-                    <div>
-                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Budget</p>
-                         <p className="text-xs font-bold text-gray-800 dark:text-white">~${totalCost} est.</p>
-                    </div>
-                </div>
-                <div className="w-px h-6 bg-gray-100 dark:bg-gray-600"></div>
-                <div className="flex items-center gap-2">
-                    <span className="text-lg">🛑</span>
-                    <div>
-                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Stops</p>
-                         <p className="text-xs font-bold text-gray-800 dark:text-white">{filteredActivities.length} Stops</p>
-                    </div>
-                </div>
+            {/* DAY STATS SUMMARY BAR */}
+            <div className="mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs">
+               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                  <span className="text-base">👣</span>
+                  <div className="flex flex-col leading-none">
+                     <span className="font-bold">{totalDayDistance.toFixed(1)} mi</span>
+                     <span className="text-[9px] opacity-70">Distance</span>
+                  </div>
+               </div>
+               <div className="w-px h-6 bg-gray-200 dark:bg-gray-600"></div>
+               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                  <span className="text-base">💸</span>
+                  <div className="flex flex-col leading-none">
+                     <span className="font-bold">~${estimatedDayBudget}</span>
+                     <span className="text-[9px] opacity-70">Est. Budget</span>
+                  </div>
+               </div>
+               <div className="w-px h-6 bg-gray-200 dark:bg-gray-600"></div>
+               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                  <span className="text-base">🚩</span>
+                  <div className="flex flex-col leading-none">
+                     <span className="font-bold">{stopCount}</span>
+                     <span className="text-[9px] opacity-70">Stops</span>
+                  </div>
+               </div>
             </div>
 
             {/* View Toggles */}
@@ -590,6 +615,14 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                             <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded">
                                 {item.time}
                             </div>
+                            {/* PRICE TAG BADGE */}
+                            <div className={`absolute bottom-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm backdrop-blur-md ${
+                                getPriceLabel(item.type) === 'Free' 
+                                ? 'bg-green-500/90 text-white' 
+                                : 'bg-white/90 text-gray-800 border border-gray-200'
+                            }`}>
+                                {getPriceLabel(item.type)}
+                            </div>
                         </div>
 
                         {/* Content Section - Added padding bottom (pb-3) to lift buttons */}
@@ -613,13 +646,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                                     }`}>
                                     {item.type || 'General'}
                                  </span>
-                                 
-                                 {/* PRICE BADGE */}
-                                 <span className="ml-2 text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                                    {item.priceLevel || 'Free'}
-                                 </span>
-
-                                 <h3 className="font-bold text-sm dark:text-gray-200 leading-tight line-clamp-2 mt-1">{item.activity}</h3>
+                                 <h3 className="font-bold text-sm dark:text-gray-200 leading-tight line-clamp-2">{item.activity}</h3>
                                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">{item.location}</p>
                              </div>
                              
