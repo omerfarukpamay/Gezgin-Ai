@@ -656,14 +656,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                             <div className="absolute top-2 left-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded">
                                 {item.time}
                             </div>
-                            {/* PRICE TAG BADGE */}
-                            <div className={`absolute bottom-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm backdrop-blur-md ${
-                                getPriceLabel(item.type) === 'Free' 
-                                ? 'bg-green-500/90 text-white' 
-                                : 'bg-white/90 text-gray-800 border border-gray-200'
-                            }`}>
-                                {getPriceLabel(item.type)}
-                            </div>
                         </div>
 
                         {/* Content Section - Added padding bottom (pb-3) to lift buttons */}
@@ -678,15 +670,26 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                              </button>
 
                              <div>
-                                 {/* Type Badge */}
-                                 <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border mb-1 inline-block
-                                    ${item.type === 'food' ? 'text-orange-600 bg-orange-50 border-orange-100' : 
-                                      item.type === 'culture' ? 'text-purple-600 bg-purple-50 border-purple-100' :
-                                      item.type === 'nature' ? 'text-green-600 bg-green-50 border-green-100' :
-                                      'text-gray-600 bg-gray-50 border-gray-100'
-                                    }`}>
-                                    {item.type || 'General'}
-                                 </span>
+                                 <div className="flex items-center gap-2 mb-1">
+                                     {/* Type Badge */}
+                                     <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border
+                                        ${item.type === 'food' ? 'text-orange-600 bg-orange-50 border-orange-100' : 
+                                          item.type === 'culture' ? 'text-purple-600 bg-purple-50 border-purple-100' :
+                                          item.type === 'nature' ? 'text-green-600 bg-green-50 border-green-100' :
+                                          'text-gray-600 bg-gray-50 border-gray-100'
+                                        }`}>
+                                        {item.type || 'General'}
+                                     </span>
+                                     
+                                     {/* Price Badge */}
+                                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                         (item.priceLevel || getPriceLabel(item.type)) === 'Free' 
+                                         ? 'text-green-600 bg-green-50 border-green-100' 
+                                         : 'text-gray-600 bg-gray-50 border-gray-100'
+                                     }`}>
+                                        {item.priceLevel || getPriceLabel(item.type)}
+                                     </span>
+                                 </div>
                                  <h3 className="font-bold text-sm dark:text-gray-200 leading-tight line-clamp-2">{item.activity}</h3>
                                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">{item.location}</p>
                              </div>
