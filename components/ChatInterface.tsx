@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, TripPlan, UserPreferences } from '../types';
 import { sendMessageToGemini } from '../services/geminiService';
@@ -7,17 +8,19 @@ interface ChatInterfaceProps {
   tripPlan: TripPlan;
   mode: 'PLANNER';
   preferences?: UserPreferences;
+  // Lifted state props to manage conversation context globally
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ tripPlan, mode, preferences }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'model',
-      text: `Hello! Your plan for ${tripPlan.destination} is ready. Based on your preferences (${preferences?.tempo} tempo), I've created a draft. You can ask to rearrange activities or request new suggestions.`,
-      timestamp: new Date(),
-    }
-  ]);
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  tripPlan, 
+  mode, 
+  preferences, 
+  messages, 
+  setMessages 
+}) => {
+  // Removed internal state for messages to use lifted state from props instead
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AuthScreen } from './components/AuthScreen';
 import { OnboardingScreen } from './components/OnboardingScreen';
@@ -5,7 +6,7 @@ import { PlanDashboard } from './components/PlanDashboard';
 import { TourGuideInterface } from './components/TourGuideInterface';
 import { UserProfileScreen } from './components/UserProfileScreen';
 import { SettingsScreen } from './components/SettingsScreen';
-import { AppPhase, TripPlan, UserPreferences, UserProfile, PastTrip, FavoritePlace, Activity, DigitalStamp } from './types';
+import { AppPhase, TripPlan, UserPreferences, UserProfile, PastTrip, FavoritePlace, Activity, DigitalStamp, Message } from './types';
 
 function App() {
   const [phase, setPhase] = useState<AppPhase>('AUTH');
@@ -16,6 +17,9 @@ function App() {
   const [favoritePlaces, setFavoritePlaces] = useState<FavoritePlace[]>([]);
   const [collectedStamps, setCollectedStamps] = useState<DigitalStamp[]>([]);
   
+  // Lifted Chat Messages for persistent context in the Planning Dashboard
+  const [messages, setMessages] = useState<Message[]>([]);
+
   const [pastTrips, setPastTrips] = useState<PastTrip[]>([
     {
       id: 'trip_1',
@@ -324,6 +328,16 @@ function App() {
     setTripPlan(newPlan);
     setDrafts(prev => [newPlan, ...prev]);
 
+    // Initialize the chat messages with a personalized welcome for the new plan
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'model',
+        text: `Hello! Your plan for ${prefs.city} is ready. Based on your preferences (${prefs.tempo} tempo), I've created a draft. You can ask to rearrange activities or request new suggestions.`,
+        timestamp: new Date(),
+      }
+    ]);
+
     setTimeout(() => {
       setPhase('PLANNING');
     }, 1500);
@@ -382,6 +396,8 @@ function App() {
           onLoadDraft={handleLoadDraft}
           onUpdatePlan={handleUpdatePlan}
           onDeleteDraft={handleDeleteDraft}
+          messages={messages}
+          setMessages={setMessages}
         />
       )}
       
