@@ -1,9 +1,11 @@
+
 import { GoogleGenAI, Part } from "@google/genai";
 import { Message, TripLocation, TripPlan, UserPreferences, Activity, ActivityType } from "../types";
 
 // CRITICAL: process.env.API_KEY is automatically injected.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MODEL_NAME = "gemini-2.5-flash";
+// Defaulting to 'gemini-3-flash-preview' for general tasks as per guidelines.
+const MODEL_NAME = "gemini-3-flash-preview";
 
 type AgentMode = 'PLANNER' | 'GUIDE' | 'BRIEFING';
 
@@ -174,6 +176,7 @@ export const sendMessageToGemini = async (
         systemInstruction: systemInstruction,
         tools: tools,
         toolConfig: toolConfig,
+        // DO NOT set responseMimeType when using googleMaps tool as per guidelines.
         responseMimeType: responseMimeType,
       },
     });

@@ -1,9 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { TripPlan, UserPreferences, PlanInsight, Activity, BriefingData, UserProfile, Message } from '../types';
 import { ChatInterface } from './ChatInterface';
 import { sendMessageToGemini } from '../services/geminiService';
 
-// Add type definition for Leaflet since it's loaded via CDN
 declare global {
   interface Window {
     L: any;
@@ -19,12 +19,10 @@ interface PlanDashboardProps {
   onToggleFavorite: (activity: Activity) => void;
   favoriteIds: string[];
   onNewPlan: () => void;
-  // Draft features
   drafts: TripPlan[];
   onLoadDraft: (plan: TripPlan) => void;
   onUpdatePlan: (plan: TripPlan) => void;
   onDeleteDraft: (planId: string) => void;
-  // Lifted Messages
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
@@ -129,7 +127,9 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   
   const estimatedDayBudget = filteredActivities.reduce((acc, act) => acc + getEstimatedCost(act.type), 0);
   const stopCount = filteredActivities.length;
-  const days = Array.from(new Set(plan.activities.map(a => a.day || 1))).sort();
+  
+  // Use plan.duration to generate day list
+  const dayButtons = Array.from({ length: plan.duration || 1 }, (_, i) => i + 1);
 
   useEffect(() => {
     if (viewMode === 'map' && window.L) {
@@ -229,12 +229,9 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
         </div>
       )}
 
-      {/* LEFT: Itinerary View */}
       <div className="w-full md:w-1/3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors">
         
-        {/* REFINED HEADER - Match Screenshot */}
         <div className="bg-white dark:bg-gray-800 p-4 pb-0 space-y-4">
-            {/* Top Row: Navigation | View Toggle | Profile */}
             <div className="flex items-center justify-between">
                 <div className="flex gap-2">
                   <button onClick={onNewPlan} className="w-10 h-10 rounded-full bg-gray-50/80 dark:bg-gray-800 text-gray-500 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-sm" title="New">
@@ -265,14 +262,12 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 </button>
             </div>
 
-            {/* Day Selector Row */}
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-1">
-                 {days.map(day => (
+                 {dayButtons.map(day => (
                     <button key={day} onClick={() => setActiveDay(day)} className={`px-5 py-2 rounded-full text-[10px] font-black whitespace-nowrap uppercase tracking-widest transition-all ${activeDay === day ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-400'}`}>Day {day}</button>
                  ))}
             </div>
 
-            {/* Unified Stats Bar */}
             <div className="flex items-center bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3">
                 <div className="flex-1 flex justify-around items-center px-2">
                     <div className="flex items-center gap-1.5">
@@ -301,7 +296,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             </div>
         </div>
 
-        {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900/50 relative">
           {insights.map(insight => (
             <div key={insight.id} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 p-3 rounded-xl flex items-start gap-3 shadow-sm">
@@ -313,7 +307,9 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
 
           {viewMode === 'list' && (
              <div className="relative border-l-2 border-dashed border-gray-200 dark:border-gray-800 ml-4 space-y-8 py-2">
-              {filteredActivities.map((item, index) => {
+              {filteredActivities.length === 0 ? (
+                <div className="text-center py-20 text-gray-400 text-sm">No activities planned for this day. Ask Assistant to add some!</div>
+              ) : filteredActivities.map((item, index) => {
                 let distanceToNext = null;
                 if (index < filteredActivities.length - 1) {
                   const nextItem = filteredActivities[index + 1];
@@ -367,7 +363,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           {viewMode === 'map' && <div id="map-container" className="h-[400px] w-full rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-700"></div>}
         </div>
 
-        {/* Action Buttons */}
         <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-3">
           <button onClick={handleGetBriefing} className="flex-1 py-4 rounded-xl font-black text-[10px] uppercase bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors tracking-widest">Trip Briefing</button>
           <button onClick={() => onStartTour(plan)} className="flex-[2] py-4 rounded-xl font-black text-[10px] uppercase bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all tracking-widest">Start Wise Mode</button>

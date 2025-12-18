@@ -4,6 +4,7 @@ export type AppPhase = 'AUTH' | 'ONBOARDING' | 'PLANNING' | 'TOUR_GUIDE' | 'PROF
 export interface UserPreferences {
   city: string;
   dates: string;
+  duration: number; // New: Total number of days
   tempo: 'relaxed' | 'moderate' | 'fast';
   budget: 'budget' | 'standard' | 'luxury';
   transport: 'public' | 'rideshare' | 'private';
@@ -113,6 +114,7 @@ export interface TripPlan {
   createdAt: number; // Timestamp for sorting
   destination: string;
   dates: string;
+  duration: number;  // New: Total number of days in the plan
   status: 'draft' | 'confirmed';
   currentStopId?: string;
   activities: Activity[];
