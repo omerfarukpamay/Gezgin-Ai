@@ -1,12 +1,8 @@
-
 import { GoogleGenAI, Part } from "@google/genai";
 import { Message, TripLocation, TripPlan, UserPreferences, Activity, ActivityType } from "../types";
 
 // CRITICAL: process.env.API_KEY is automatically injected.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-// Google Maps grounding is only supported in Gemini 2.5 series models.
-// 'gemini-2.5-flash' is the correct model name for text generation with Maps grounding.
 const MODEL_NAME = "gemini-2.5-flash";
 
 type AgentMode = 'PLANNER' | 'GUIDE' | 'BRIEFING';
@@ -26,6 +22,7 @@ export const sendMessageToGemini = async (
 ): Promise<{ text: string; groundingMetadata?: any }> => {
   
   let systemInstruction = "";
+  let responseMimeType: string | undefined = undefined;
 
   if (mode === 'PLANNER') {
     systemInstruction = `
@@ -49,37 +46,39 @@ export const sendMessageToGemini = async (
       4. Keep it professional yet friendly.
     `;
   } else if (mode === 'BRIEFING') {
+     // MICRO-BRIEFING - Enforcing extreme brevity
      systemInstruction = `
        Role: Elite Travel Logistics Officer.
-       Task: Create a highly actionable JSON INTELLIGENCE BRIEFING for tomorrow's itinerary.
+       Task: Create a ultra-short JSON briefing for tomorrow.
        
        Destination: ${tripContext.destination}
        Itinerary:
        ${tripContext.activities.map(a => `- ${a.time}: ${a.activity}`).join('\n')}
 
-       You MUST return a JSON object with this exact schema:
+       You MUST return a JSON object. EVERY text field must be EXACTLY one short sentence.
        {
-         "headline": "Short, catchy, energetic title",
-         "summary": "2-3 sentences summarizing the vibe of the day",
+         "headline": "Short title (3-4 words)",
+         "summary": "ONE sentence overview of the day's vibe.",
          "weather": {
-           "temp": "Temperature range",
-           "condition": "Short condition",
-           "emoji": "🌤",
-           "advice": "Crucial weather advice"
+           "temp": "e.g. 18°C",
+           "condition": "e.g. Sunny",
+           "emoji": "☀️",
+           "advice": "ONE sentence weather tip."
          },
          "dressCode": {
-            "title": "Style",
-            "description": "Specific advice based on venues"
+            "title": "Style name",
+            "description": "ONE sentence clothing advice."
          },
-         "packing": ["Item 1", "Item 2"],
-         "transport": "One critical tip",
-         "culturalTip": "A local etiquette tip",
-         "safetyTip": "A specific thing to watch out for"
+         "packing": ["Item 1", "Item 2", "Item 3"],
+         "transport": "ONE short logistics tip.",
+         "culturalTip": "ONE short cultural fact.",
+         "safetyTip": "ONE short safety alert."
        }
 
-       IMPORTANT: Return ONLY the raw JSON string. Do not use Markdown code blocks.
+       IMPORTANT: Return ONLY the raw JSON string.
      `;
   } else {
+    // TOUR GUIDE (WISE) MODE
     const locationContext = currentActivity 
       ? `Current Stop: ${currentActivity.activity}. Type: ${currentActivity.type || 'general'}`
       : `Current Location: ${userLocation?.name || "Unknown"}`;
@@ -89,30 +88,29 @@ export const sendMessageToGemini = async (
 
     switch (type) {
         case 'culture':
-            personaInstruction = "You are 'Wise the Curator'. You speak with sophistication and passion for history.";
+            personaInstruction = "You are 'Wise the Curator'. Sophisticated and passionate about history.";
             break;
         case 'food':
-            personaInstruction = "You are 'Wise the Gourmand'. You are obsessed with flavors and culinary secrets.";
+            personaInstruction = "You are 'Wise the Gourmand'. Obsessed with flavors and culinary secrets.";
             break;
         case 'nature':
-            personaInstruction = "You are 'Zen Wise'. Calm and deeply connected to nature.";
+            personaInstruction = "You are 'Zen Wise'. Calm and observant.";
+            break;
+        case 'nightlife':
+            personaInstruction = "You are 'Party Wise'. Ultimate wingman/hype person.";
             break;
         default:
-            personaInstruction = "You are 'Wise', the user's witty travel companion.";
+            personaInstruction = "You are 'Wise', the user's witty best friend.";
             break;
     }
 
     systemInstruction = `
       ${personaInstruction}
-      
       ${locationContext}
-      User Interests: ${preferences?.interests?.join(', ')}
-      User Style: ${preferences?.explorationStyle}
-      
       RULES:
       1. Stay in character!
       2. Keep it SHORT (Max 2-3 sentences).
-      3. Use Google Maps/Search for real-time info.
+      3. Use Google Search/Maps if needed.
     `;
   }
 
@@ -165,6 +163,7 @@ export const sendMessageToGemini = async (
         systemInstruction: systemInstruction,
         tools: tools,
         toolConfig: toolConfig,
+        responseMimeType: responseMimeType,
       },
     });
 
@@ -175,6 +174,6 @@ export const sendMessageToGemini = async (
 
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return { text: "Wise is having trouble connecting to the maps. Please try again." };
+    return { text: "Connection error. Try again?" };
   }
 };

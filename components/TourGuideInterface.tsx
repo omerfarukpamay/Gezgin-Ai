@@ -14,25 +14,15 @@ interface TourGuideInterfaceProps {
   plan: TripPlan;
   onExit: () => void;
   onStampCollected?: (activity: Activity) => void;
-  // Added messages and setMessages to props to support lifted state from App.tsx
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
-export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ 
-  plan, 
-  onExit, 
-  onStampCollected,
-  messages,
-  setMessages
-}) => {
+export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, onExit, onStampCollected }) => {
   const getNextStop = (): Activity | undefined => {
     return plan.activities.find(a => a.status !== 'completed');
   };
 
   const [currentStop, setCurrentStop] = useState<Activity | undefined>(getNextStop());
-  // Removed internal messages state to use props instead to resolve type error in App.tsx
-  
+  const [messages, setMessages] = useState<Message[]>([]);
   const [arrivalState, setArrivalState] = useState<'approaching' | 'arrived'>('approaching');
   
   // Gamification State
@@ -225,6 +215,10 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({
   const handleSend = async (text: string, image?: string) => {
     if (!text && !image) return;
     
+    // Do NOT stop audio automatically if user just types, 
+    // but if they send, we might want to stop the previous answer.
+    // stopAudio(); 
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -251,6 +245,9 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({
     };
     setMessages(prev => [...prev, aiMsg]);
     setLoading(false);
+    
+    // Note: We do NOT auto-speak anymore based on new request. 
+    // User must hit "Listen".
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
