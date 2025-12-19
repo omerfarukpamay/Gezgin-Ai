@@ -1,11 +1,12 @@
-import { GoogleGenAI, Part } from "@google/genai";
+
+import { GoogleGenAI, Part, Type } from "@google/genai";
 import { Message, TripLocation, TripPlan, UserPreferences, Activity, ActivityType } from "../types";
 
 // CRITICAL: process.env.API_KEY is automatically injected.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const MODEL_NAME = "gemini-2.5-flash";
 
-type AgentMode = 'PLANNER' | 'GUIDE' | 'BRIEFING';
+type AgentMode = 'PLANNER' | 'GUIDE' | 'BRIEFING' | 'LIVE_CHECK';
 
 /**
  * Sends a message to Gemini based on the current mode.
@@ -46,7 +47,6 @@ export const sendMessageToGemini = async (
       4. Keep it professional yet friendly.
     `;
   } else if (mode === 'BRIEFING') {
-     // MICRO-BRIEFING - Enforcing extreme brevity
      systemInstruction = `
        Role: Elite Travel Logistics Officer.
        Task: Create a ultra-short JSON briefing for tomorrow.
@@ -77,6 +77,29 @@ export const sendMessageToGemini = async (
 
        IMPORTANT: Return ONLY the raw JSON string.
      `;
+  } else if (mode === 'LIVE_CHECK') {
+    systemInstruction = `
+      You are a Real-Time Travel Auditor. 
+      Task: Verify the status of the following activities for today.
+      Use Google Search and Google Maps to check:
+      1. Are they currently open?
+      2. Are there any unusual crowds or wait times?
+      3. Is there any traffic or transit delay affecting the route?
+
+      Current Plan:
+      ${tripContext.activities.filter(a => a.day === (currentActivity?.day || 1)).map(a => `- ID: ${a.id}, Name: ${a.activity}, Location: ${a.location}`).join('\n')}
+
+      Return a JSON array of status objects:
+      [
+        {
+          "id": "activity_id",
+          "status": "open" | "busy" | "closed" | "alert",
+          "message": "Short 5-word status update",
+          "details": "One sentence detail"
+        }
+      ]
+      Only return the JSON.
+    `;
   } else {
     // TOUR GUIDE (WISE) MODE
     const locationContext = currentActivity 

@@ -40,6 +40,8 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const recognitionRef = useRef<any>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -62,7 +64,7 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
       setIsListening(false);
       stopAudio();
       
-      const introText = `Heading to ${currentStop.activity}. Ready for some ${currentStop.type || 'adventure'}?`;
+      const introText = `Next up: ${currentStop.activity}. It's a ${currentStop.type || 'special stop'} on our journey. Ready to roll?`;
       setMessages([{
         id: 'init-' + currentStop.id,
         role: 'model',
@@ -71,6 +73,59 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
       }]);
     }
   }, [currentStop?.id]);
+
+  // MAP LOGIC - SMOOTH FLYTO
+  useEffect(() => {
+    const container = document.getElementById('guide-map-bg');
+    if (currentStop && currentStop.lat && currentStop.lng && window.L && container) {
+      if (!mapInstanceRef.current) {
+        // Dark theme map for premium feel
+        const map = window.L.map('guide-map-bg', { 
+          zoomControl: false, 
+          attributionControl: false,
+          fadeAnimation: true,
+          zoomAnimation: true
+        }).setView([currentStop.lat, currentStop.lng], 13);
+        
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        mapInstanceRef.current = map;
+      }
+
+      const map = mapInstanceRef.current;
+
+      // Update Marker
+      if (markerRef.current) markerRef.current.remove();
+      
+      const icon = window.L.divIcon({
+          className: 'custom-div-icon',
+          html: `<div class="relative w-10 h-10">
+                   <div class="absolute inset-0 bg-indigo-500/40 rounded-full animate-ping"></div>
+                   <div class="absolute inset-2 bg-indigo-500 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-[10px] font-black text-white">
+                     ${getTypeIcon(currentStop.type)}
+                   </div>
+                 </div>`,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20]
+      });
+
+      markerRef.current = window.L.marker([currentStop.lat, currentStop.lng], { icon }).addTo(map);
+
+      // Smooth FlyTo movement
+      if (arrivalState === 'arrived') {
+        // Detailed zoom on arrival
+        map.flyTo([currentStop.lat, currentStop.lng], 18, {
+          duration: 3,
+          easeLinearity: 0.25
+        });
+      } else {
+        // Wider view for "approaching" phase
+        map.flyTo([currentStop.lat, currentStop.lng], 14, {
+          duration: 2.5,
+          easeLinearity: 0.1
+        });
+      }
+    }
+  }, [arrivalState, currentStop]);
 
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,17 +142,19 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
   }, [messages]);
 
   useEffect(() => {
-    return () => synthRef.current.cancel();
+    return () => {
+        synthRef.current.cancel();
+        if (mapInstanceRef.current) {
+            mapInstanceRef.current.remove();
+            mapInstanceRef.current = null;
+        }
+    }
   }, []);
 
-  // --- AUDIO LOGIC ---
-
   const speak = (text: string, speed: number = 1.0) => {
-    // 1. Cancel existing
     synthRef.current.cancel();
     setIsPaused(false);
     
-    // 2. Setup new utterance
     const utterance = new SpeechSynthesisUtterance(text);
     if (selectedVoice) utterance.voice = selectedVoice;
     utterance.rate = speed;
@@ -124,18 +181,13 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
   };
 
   const replay = () => {
-    if (currentAudioText) {
-      speak(currentAudioText, playbackSpeed);
-    }
+    if (currentAudioText) speak(currentAudioText, playbackSpeed);
   };
 
   const toggleSpeed = () => {
     const newSpeed = playbackSpeed === 1.0 ? 1.5 : 1.0;
     setPlaybackSpeed(newSpeed);
-    // WebSpeech API requires restart to change speed
-    if (currentAudioText) {
-      speak(currentAudioText, newSpeed);
-    }
+    if (currentAudioText) speak(currentAudioText, newSpeed);
   };
 
   const stopAudio = () => {
@@ -144,8 +196,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     setIsPaused(false);
     setCurrentAudioText(null);
   };
-
-  // --- MIC LOGIC (FIXED) ---
 
   const toggleMic = async () => {
     if (isListening) {
@@ -157,18 +207,15 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     const SpeechRecognition = (window as unknown as IWindow).SpeechRecognition || (window as unknown as IWindow).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Voice recognition is not supported in this browser. Try Chrome or Safari.");
+      alert("Voice recognition is not supported in this browser.");
       return;
     }
 
-    // Explicitly request microphone permission first to avoid 'not-allowed' error
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Stop the stream immediately, we only needed the permission
         stream.getTracks().forEach(track => track.stop());
     } catch (err) {
-        console.error("Microphone permission denied:", err);
-        alert("Microphone access blocked. Please enable permissions in your browser settings.");
+        alert("Microphone access blocked.");
         return;
     }
 
@@ -177,86 +224,38 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     recognition.interimResults = true;
     recognition.continuous = false;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
+    recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map((result: any) => result.transcript)
-        .join('');
+      const transcript = Array.from(event.results).map((result: any) => result[0]).map((result: any) => result.transcript).join('');
       setInputText(transcript);
     };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event.error);
-      if (event.error === 'not-allowed') {
-          alert("Microphone access blocked. Please check your browser settings.");
-      }
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
 
     recognitionRef.current = recognition;
-    try {
-        recognition.start();
-    } catch (e) {
-        console.error("Failed to start recognition:", e);
-        setIsListening(false);
-    }
+    try { recognition.start(); } catch (e) { setIsListening(false); }
   };
-
-  // --- CHAT LOGIC ---
 
   const handleSend = async (text: string, image?: string) => {
     if (!text && !image) return;
     
-    // Do NOT stop audio automatically if user just types, 
-    // but if they send, we might want to stop the previous answer.
-    // stopAudio(); 
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: text,
-      image: image,
-      timestamp: new Date()
-    };
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text, image: image, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
     setInputText('');
     setIsListening(false);
 
-    const response = await sendMessageToGemini(
-      messages, userMsg.text, plan, 'GUIDE', undefined, image, userLocation,
-      arrivalState === 'arrived' ? currentStop : undefined
-    );
-
-    const aiMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      role: 'model',
-      text: response.text,
-      groundingMetadata: response.groundingMetadata,
-      timestamp: new Date()
-    };
+    const response = await sendMessageToGemini(messages, userMsg.text, plan, 'GUIDE', undefined, image, userLocation, arrivalState === 'arrived' ? currentStop : undefined);
+    const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'model', text: response.text, groundingMetadata: response.groundingMetadata, timestamp: new Date() };
     setMessages(prev => [...prev, aiMsg]);
     setLoading(false);
-    
-    // Note: We do NOT auto-speak anymore based on new request. 
-    // User must hit "Listen".
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        handleSend("Analyze this image given my current location.", reader.result as string);
-      };
+      reader.onloadend = () => handleSend("Look at what I see right now.", reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -264,11 +263,9 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
   const confirmArrival = () => {
     setArrivalState('arrived');
     setShowStampAnimation(true);
-    if(onStampCollected && currentStop) {
-        onStampCollected(currentStop);
-    }
-    handleSend(`I have arrived at ${currentStop?.activity}. Start the tour!`);
-    setTimeout(() => setShowStampAnimation(false), 4000);
+    if(onStampCollected && currentStop) onStampCollected(currentStop);
+    handleSend(`I have arrived at ${currentStop?.activity}. What's the plan here?`);
+    setTimeout(() => setShowStampAnimation(false), 3000);
   };
 
   const goToNextStop = () => {
@@ -277,9 +274,9 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     if (currentIndex !== -1 && currentIndex < plan.activities.length - 1) {
       const nextStop = plan.activities[currentIndex + 1];
       setCurrentStop(nextStop);
-      setUserLocation({ lat: 41.8826, lng: -87.6226, name: "Moving..." });
+      setUserLocation({ lat: 41.8826, lng: -87.6226, name: "Tracking..." });
     } else {
-       handleSend("That was the last stop! We are done for the day.");
+       handleSend("Journey complete! We've seen it all for today.");
     }
   };
 
@@ -294,20 +291,23 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
   };
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col relative overflow-hidden font-sans">
+    <div className="h-screen bg-gray-950 text-white flex flex-col relative overflow-hidden font-sans">
       
-      {/* Background */}
-      <div className={`absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] transition-colors duration-1000 pointer-events-none ${arrivalState === 'arrived' ? 'from-emerald-800/60 via-gray-900' : 'from-indigo-900/40 via-gray-900'} to-gray-900`}></div>
+      {/* PERSISTENT MAP BACKGROUND */}
+      <div id="guide-map-bg" className="absolute inset-0 z-0"></div>
+      
+      {/* VIGNETTE OVERLAY FOR READABILITY */}
+      <div className="absolute inset-0 z-1 pointer-events-none bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(3,7,18,0.4)_100%)] shadow-[inset_0_0_150px_rgba(0,0,0,0.5)]"></div>
 
       {/* Stamp Animation */}
       {showStampAnimation && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
               <div className="relative transform animate-[bounce_1s_ease-out]">
-                  <div className="w-64 h-64 rounded-full border-8 border-dashed border-red-500 flex items-center justify-center bg-amber-100 rotate-[-12deg] shadow-2xl">
+                  <div className="w-64 h-64 rounded-full border-8 border-dashed border-white/80 flex items-center justify-center bg-indigo-600/90 rotate-[-12deg] shadow-[0_0_50px_rgba(79,70,229,0.8)]">
                       <div className="text-center">
-                          <p className="text-red-600 font-black text-3xl uppercase tracking-widest opacity-80">VISITED</p>
-                          <p className="text-red-800 font-bold text-lg mt-2">{currentStop?.activity}</p>
-                          <p className="text-red-500 text-xs mt-1">{new Date().toLocaleDateString()}</p>
+                          <p className="text-white font-black text-4xl uppercase tracking-widest">CHECKED IN</p>
+                          <p className="text-indigo-200 font-bold text-lg mt-2 px-4 leading-tight">{currentStop?.activity}</p>
+                          <div className="mt-4 text-4xl">{getTypeIcon(currentStop?.type)}</div>
                       </div>
                   </div>
               </div>
@@ -315,181 +315,108 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
       )}
 
       {/* Top Bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-4 flex justify-between items-start">
-        <button onClick={onExit} className="bg-white/10 backdrop-blur rounded-full px-3 py-1 text-xs hover:bg-white/20 transition">← Plan</button>
+      <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/90 via-black/40 to-transparent p-6 flex justify-between items-start">
+        <button onClick={onExit} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-full px-5 py-2 text-xs font-bold hover:bg-white/20 transition-all flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          Exit
+        </button>
         <div className="text-center">
-           <h2 className="font-bold text-lg drop-shadow-md">Wise Guide</h2>
+           <h2 className="font-black text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-tight">Wise Guide</h2>
            <div className="flex items-center justify-center gap-2 mt-1">
-             <span className="text-xs px-2 py-0.5 bg-gray-800 rounded-full border border-gray-600 flex items-center gap-1">
-                 <span>{getTypeIcon(currentStop?.type)}</span>
-                 <span className="uppercase tracking-wide text-[10px]">
-                     {currentStop?.type ? `${currentStop.type} Mode` : 'Explorer Mode'}
+             <span className="text-[10px] px-3 py-1 bg-indigo-600/80 backdrop-blur-xl rounded-full border border-indigo-400/30 flex items-center gap-1.5 shadow-lg">
+                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                 <span className="uppercase tracking-widest font-black">
+                     LIVE • {currentStop?.activity}
                  </span>
              </span>
            </div>
         </div>
-        {arrivalState === 'approaching' && (
-           <button onClick={() => setUserLocation({lat:0,lng:0,name:currentStop?.activity||''})} className="bg-blue-600/50 backdrop-blur rounded-full px-3 py-1 text-[10px]">Simulate GPS</button>
-        )}
+        <div className="w-16"></div> {/* Balance Spacer */}
       </div>
 
-      {/* AUDIO CONTROL BAR (Visible only when text is selected/playing) */}
-      {(currentAudioText || isSpeaking) && (
-          <div className="absolute top-20 left-0 right-0 z-40 flex justify-center animate-slide-down">
-             <div className="bg-gray-800/95 backdrop-blur-md px-4 py-2 rounded-full flex gap-4 items-center shadow-2xl border border-indigo-500/30">
-                
-                {/* Status Indicator */}
-                <div className="flex space-x-1 h-3 items-end w-4">
-                    {isSpeaking && !isPaused && (
-                       <>
-                        <div className="w-1 bg-green-400 animate-[bounce_1s_infinite] h-2"></div>
-                        <div className="w-1 bg-green-400 animate-[bounce_1.2s_infinite] h-3"></div>
-                       </>
-                    )}
-                    {(isPaused || !isSpeaking) && (
-                       <div className="w-1 bg-gray-500 h-1"></div>
-                    )}
-                </div>
-
-                <div className="h-4 w-px bg-gray-600"></div>
-
-                {/* Replay */}
-                <button onClick={replay} className="text-gray-300 hover:text-white" title="Replay">
-                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                </button>
-
-                {/* Play/Pause */}
-                <button onClick={togglePlayPause} className="text-white hover:text-indigo-400 transition transform hover:scale-110">
-                  {isPaused || !isSpeaking ? (
-                    <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                  ) : (
-                    <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                  )}
-                </button>
-
-                {/* Speed Toggle */}
-                <button 
-                   onClick={toggleSpeed} 
-                   className="text-xs font-mono font-bold bg-gray-700 px-2 py-1 rounded border border-gray-600 hover:bg-gray-600 transition min-w-[3rem]"
-                >
-                   {playbackSpeed}x
-                </button>
-
-                {/* Close */}
-                <button onClick={stopAudio} className="text-gray-500 hover:text-white ml-2">✕</button>
-             </div>
-          </div>
-      )}
-
       {/* Arrival Card */}
-      {arrivalState === 'approaching' && userLocation.name === currentStop?.activity && (
-         <div className="absolute top-40 left-4 right-4 z-30 animate-bounce-in">
-            <div className="bg-white text-gray-900 p-6 rounded-3xl shadow-2xl border-2 border-indigo-500 text-center">
-               <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl">📍</div>
-               <h3 className="font-bold text-xl mb-1">You've Arrived!</h3>
-               <p className="text-sm text-gray-600 mb-4">Check in to {currentStop?.activity}.</p>
-               <button onClick={confirmArrival} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200">
-                 Check In & Start Tour
-               </button>
+      {arrivalState === 'approaching' && (
+         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-full max-w-sm px-6 animate-bounce-in">
+            <div className="bg-gray-900/95 backdrop-blur-2xl text-white p-8 rounded-[3rem] shadow-[0_0_80px_rgba(0,0,0,0.5)] border border-white/10 text-center">
+               <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 text-4xl shadow-2xl shadow-indigo-600/30 rotate-3">
+                  {getTypeIcon(currentStop?.type)}
+               </div>
+               <h3 className="font-black text-2xl mb-2 tracking-tight">Arrived?</h3>
+               <p className="text-sm text-gray-400 mb-8 px-4 leading-relaxed font-medium">I'm tracking your location. Are you at <b>{currentStop?.activity}</b> yet?</p>
+               
+               <div className="space-y-3">
+                 <button onClick={confirmArrival} className="w-full bg-white text-gray-900 py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:scale-105 transition-all">
+                   Yes, Check In
+                 </button>
+                 <button onClick={() => setUserLocation({lat:currentStop?.lat||0,lng:currentStop?.lng||0,name:currentStop?.activity||''})} className="w-full bg-indigo-600/20 text-indigo-400 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-indigo-500/20 hover:bg-indigo-600/30 transition-all">
+                   Force GPS Pin
+                 </button>
+               </div>
             </div>
          </div>
       )}
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto pt-36 pb-48 px-4 space-y-6 scrollbar-hide relative z-10">
+      <div className={`flex-1 overflow-y-auto pt-36 pb-52 px-6 space-y-6 scrollbar-hide relative z-10 transition-opacity duration-500 ${arrivalState === 'arrived' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         {messages.map(msg => (
           <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl p-4 shadow-xl ${msg.role === 'user' ? 'bg-indigo-600' : 'bg-gray-800/90 border border-gray-700'}`}>
-              {msg.image && <img src={msg.image} className="rounded-lg mb-2 max-h-60 w-full object-cover" />}
-              <p className="text-sm whitespace-pre-wrap text-white">{msg.text}</p>
+            <div className={`max-w-[85%] rounded-[2rem] p-6 shadow-2xl ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none border border-white/10' : 'bg-gray-900/90 backdrop-blur-xl border border-white/10'}`}>
+              {msg.image && <img src={msg.image} className="rounded-2xl mb-4 max-h-60 w-full object-cover border border-white/10" />}
+              <p className="text-[14px] leading-relaxed font-semibold whitespace-pre-wrap">{msg.text}</p>
               {msg.role === 'model' && <GroundingChips metadata={msg.groundingMetadata} showWebSources={false} />}
             </div>
-            
-            {/* Listen Button (Only for Model) */}
             {msg.role === 'model' && (
               <button 
                  onClick={() => speak(msg.text, playbackSpeed)}
-                 className={`mt-2 ml-1 flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
-                    currentAudioText === msg.text 
-                    ? 'bg-indigo-600 text-white border-indigo-500 ring-2 ring-indigo-400/30' 
-                    : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700 hover:text-white'
-                 }`}
+                 className={`mt-3 ml-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full border transition-all ${currentAudioText === msg.text ? 'bg-white text-gray-900 border-white' : 'bg-gray-900/60 backdrop-blur-xl text-gray-400 border-white/10 hover:bg-white/10 hover:text-white'}`}
               >
                  {currentAudioText === msg.text && isSpeaking && !isPaused ? (
-                     // Equalizer Icon
-                     <div className="flex gap-0.5 h-3 items-end">
-                       <span className="w-0.5 bg-white h-2 animate-[bounce_0.5s_infinite]"></span>
-                       <span className="w-0.5 bg-white h-3 animate-[bounce_0.7s_infinite]"></span>
-                       <span className="w-0.5 bg-white h-1 animate-[bounce_0.9s_infinite]"></span>
+                     <div className="flex gap-1 h-3 items-end">
+                       <span className="w-1 bg-current h-2 animate-[bounce_0.5s_infinite]"></span>
+                       <span className="w-1 bg-current h-3 animate-[bounce_0.7s_infinite]"></span>
+                       <span className="w-1 bg-current h-1 animate-[bounce_0.9s_infinite]"></span>
                      </div>
-                 ) : (
-                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-                 )}
-                 {currentAudioText === msg.text ? 'Listening...' : 'Listen'}
+                 ) : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>}
+                 {currentAudioText === msg.text ? 'Streaming' : 'Play Audio'}
               </button>
             )}
           </div>
         ))}
-        {loading && <div className="text-center text-gray-400 text-xs animate-pulse">Wise is thinking...</div>}
-        
-        {isListening && (
-           <div className="flex justify-center items-center py-4 space-x-1">
-              <div className="w-1 h-3 bg-red-500 rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></div>
-              <div className="w-1 h-5 bg-red-500 rounded-full animate-pulse" style={{ animationDuration: '0.3s' }}></div>
-              <div className="w-1 h-3 bg-red-500 rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></div>
-              <span className="text-red-400 text-xs ml-2">Listening...</span>
-           </div>
-        )}
+        {loading && <div className="text-center"><span className="text-[10px] font-black text-indigo-400 tracking-[0.3em] animate-pulse uppercase bg-gray-900/50 backdrop-blur px-4 py-2 rounded-full border border-indigo-500/20">Wise is analyzing...</span></div>}
+        {isListening && <div className="flex justify-center items-center py-4 space-x-2 animate-fade-in"><div className="w-2 h-2 bg-red-500 rounded-full animate-ping"></div><span className="text-white text-[10px] font-black tracking-widest uppercase bg-red-600 px-3 py-1 rounded-full">Listening Now</span></div>}
         <div ref={scrollRef} />
       </div>
 
-      {/* Bottom Controls */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-gray-900/95 border-t border-gray-800 p-6 pb-8 backdrop-blur-lg">
-        {arrivalState === 'arrived' ? (
-          <>
-            <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
-               {['History?', 'Photo Spot?', 'Food nearby?'].map(chip => (
-                 <button key={chip} onClick={() => handleSend(chip)} className="whitespace-nowrap px-4 py-2 bg-gray-800 rounded-full text-xs font-semibold border border-gray-700 hover:bg-indigo-900/50">
+      {/* Bottom Interface */}
+      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-all duration-700 ${arrivalState === 'arrived' ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+        <div className="bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent p-6 pb-12">
+            <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide px-2">
+               {['History here?', 'Photo tips?', 'Nearby snacks?'].map(chip => (
+                 <button key={chip} onClick={() => handleSend(chip)} className="whitespace-nowrap px-6 py-3 bg-white/10 backdrop-blur-xl rounded-2xl text-[10px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/20 transition-all">
                    {chip}
                  </button>
                ))}
-               <button onClick={goToNextStop} className="whitespace-nowrap px-4 py-2 bg-indigo-600 text-white rounded-full text-xs font-semibold">
-                 Complete & Next →
+               <button onClick={goToNextStop} className="whitespace-nowrap px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-xl shadow-indigo-600/20">
+                 Next Stop <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                </button>
             </div>
 
-            <div className="flex items-center gap-3">
-               <button onClick={() => fileInputRef.current?.click()} className="h-12 w-12 bg-gray-800 rounded-full flex items-center justify-center border border-gray-700 hover:bg-gray-700 transition-colors">
-                  <svg className="w-6 h-6 text-pink-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <div className="flex items-center gap-4 px-2">
+               <button onClick={() => fileInputRef.current?.click()} className="h-16 w-16 bg-white/10 backdrop-blur-2xl rounded-3xl flex items-center justify-center border border-white/20 hover:bg-white/20 transition-all">
+                  <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                </button>
-               
-               <button 
-                  onClick={toggleMic} 
-                  className={`h-12 w-12 rounded-full flex items-center justify-center border transition-all ${isListening ? 'bg-red-500 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-gray-800 border-gray-700 hover:bg-gray-700'}`}
-               >
-                  <svg className={`w-6 h-6 ${isListening ? 'text-white' : 'text-blue-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                  </svg>
-               </button>
-
-               <input 
-                  type="text" 
-                  className="flex-1 bg-gray-800 border-none rounded-full px-5 py-3 text-white focus:ring-2 focus:ring-indigo-500 placeholder-gray-500" 
-                  placeholder="Talk or type..." 
-                  value={inputText} 
-                  onChange={e => setInputText(e.target.value)} 
-                  onKeyPress={e => e.key === 'Enter' && handleSend(inputText)}
-               />
-               <button onClick={() => handleSend(inputText)} className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+               <button onClick={toggleMic} className={`h-16 w-16 rounded-3xl flex items-center justify-center border transition-all ${isListening ? 'bg-red-500 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)]' : 'bg-white/10 backdrop-blur-2xl border-white/20 hover:bg-white/20'}`}><svg className={`w-7 h-7 text-white`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></button>
+               <div className="flex-1 relative">
+                 <input type="text" className="w-full bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl px-8 py-5 text-[15px] font-bold text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none placeholder-white/30 transition-all" placeholder="Ask Wise..." value={inputText} onChange={e => setInputText(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend(inputText)} />
+               </div>
+               <button onClick={() => handleSend(inputText)} className="h-16 w-16 bg-white text-gray-900 rounded-3xl flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all">
+                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14m-7-7l7 7-7 7" /></svg>
                </button>
             </div>
-          </>
-        ) : (
-          <div className="text-center text-gray-500 text-sm py-4">Wise waiting for arrival at {currentStop?.activity}.</div>
-        )}
-        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+        </div>
       </div>
+
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
     </div>
   );
 };
