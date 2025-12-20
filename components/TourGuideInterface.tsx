@@ -13,11 +13,31 @@ interface TourGuideInterfaceProps {
   plan: TripPlan;
   onExit: () => void;
   onStampCollected?: (activity: Activity) => void;
+  onActivityComplete?: (activityId: string) => void;
+  historyMap?: Record<string, Message[]>; // Persisted messages per activity ID
+  onUpdateHistory?: (stopId: string, msgs: Message[]) => void;
+  persistedStopId?: string | null;
+  onUpdateStopId?: (id: string) => void;
 }
 
-export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, onExit, onStampCollected }) => {
+export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ 
+  plan, 
+  onExit, 
+  onStampCollected, 
+  onActivityComplete,
+  historyMap = {},
+  onUpdateHistory,
+  persistedStopId = null,
+  onUpdateStopId
+}) => {
   const getNextStop = (): Activity | undefined => {
-    return plan.activities.find(a => a.status !== 'completed');
+    // If we have a persisted stop, check if it's still in the plan
+    if (persistedStopId) {
+      const found = plan.activities.find(a => a.id === persistedStopId);
+      if (found) return found;
+    }
+    // Fallback to first incomplete activity
+    return plan.activities.find(a => a.status !== 'completed') || plan.activities[0];
   };
 
   const [currentStop, setCurrentStop] = useState<Activity | undefined>(getNextStop());
@@ -54,20 +74,47 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     }
   }, []);
 
+  // Sync active messages back to parent map
+  useEffect(() => {
+    if (currentStop && onUpdateHistory) {
+      onUpdateHistory(currentStop.id, messages);
+    }
+  }, [messages, currentStop?.id]);
+
+  // Isolated Stop Loading/Clearing Logic
   useEffect(() => {
     if (currentStop) {
-      setArrivalState('approaching');
-      setLoading(false);
-      setIsListening(false);
-      stopAudio();
+      const existingHistory = historyMap[currentStop.id];
       
-      const introText = `Next up: ${currentStop.activity}. Ready?`;
-      setMessages([{
-        id: 'init-' + currentStop.id,
-        role: 'model',
-        text: introText,
-        timestamp: new Date()
-      }]);
+      // PERSISTENCE CHECK:
+      // If the activity status is already 'completed', it means user confirmed arrival before.
+      // We should bypass 'approaching' state.
+      if (currentStop.status === 'completed') {
+        setArrivalState('arrived');
+      } else {
+        setArrivalState('approaching');
+      }
+
+      if (existingHistory && existingHistory.length > 0) {
+        // RESUMING EXISTING STOP: Load the specific chat for this stop
+        setMessages(existingHistory);
+      } else {
+        // BRAND NEW STOP: Clear everything and start intro
+        setLoading(false);
+        setIsListening(false);
+        stopAudio();
+        
+        const introText = `Next up: ${currentStop.activity}. Ready? I've refreshed our conversation for this stop.`;
+        const initialMessages: Message[] = [{
+          id: 'init-' + currentStop.id,
+          role: 'model',
+          text: introText,
+          timestamp: new Date()
+        }];
+        
+        setMessages(initialMessages);
+        if (onUpdateStopId) onUpdateStopId(currentStop.id);
+      }
     }
   }, [currentStop?.id]);
 
@@ -205,7 +252,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
         .map((result: any) => result.transcript)
         .join('');
       
-      // We don't setInputText(transcript) here anymore to keep it hidden as requested
       lastTranscriptRef.current = transcript;
     };
 
@@ -261,7 +307,11 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
 
   const confirmArrival = () => {
     setArrivalState('arrived');
-    if(onStampCollected && currentStop) onStampCollected(currentStop);
+    if (currentStop) {
+      if(onStampCollected) onStampCollected(currentStop);
+      // Mark as completed so we know user already 'arrived' if they exit/resume
+      if(onActivityComplete) onActivityComplete(currentStop.id);
+    }
     handleSend(`I have arrived at ${currentStop?.activity}.`);
   };
 
@@ -269,7 +319,15 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
     if (!currentStop) return;
     const currentIndex = plan.activities.findIndex(a => a.id === currentStop.id);
     if (currentIndex !== -1 && currentIndex < plan.activities.length - 1) {
-      setCurrentStop(plan.activities[currentIndex + 1]);
+      // Find the next in line
+      const nextOne = plan.activities[currentIndex + 1];
+      if (nextOne) {
+        setCurrentStop(nextOne);
+      } else {
+         handleSend("We have reached the end of today's plan! How was the journey?");
+      }
+    } else {
+      handleSend("We have reached the end of today's plan! How was the journey?");
     }
   };
 
@@ -362,7 +420,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
                     </div>
                     <div className="voice-wave">
-                       {/* Mock Waveform */}
                        {[8, 14, 10, 18, 12, 16, 9, 13, 11, 7].map((h, i) => (
                          <div key={i} style={{ height: `${h}px` }} className="bg-white/40"></div>
                        ))}
@@ -398,19 +455,16 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
       {/* Bottom Controls */}
       <div className={`absolute bottom-0 left-0 right-0 z-20 transition-all duration-700 ${arrivalState === 'arrived' ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
         
-        {/* ULTRA COMPACT AUDIO PLAYER BAR */}
         {currentAudioText && (
           <div className="flex justify-center mb-6 animate-slide-up px-6">
              <div className="bg-indigo-600/95 backdrop-blur-3xl rounded-full p-1.5 flex items-center gap-3 border border-white/20 shadow-2xl w-full max-w-xs">
                 
-                {/* Visual indicator pill */}
                 <div className="flex items-center gap-2 pl-3 pr-2 border-r border-white/10 shrink-0">
                    <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
                    <p className="text-[9px] font-black text-white uppercase tracking-widest">Wise</p>
                 </div>
 
                 <div className="flex items-center gap-2 pr-1 flex-1 justify-end">
-                   {/* Speed Toggle */}
                    <button 
                      onClick={cycleSpeed}
                      className="px-2 py-1.5 rounded-full bg-white/10 border border-white/10 text-[10px] font-black text-white hover:bg-white/20 transition-all min-w-[44px]"
@@ -418,7 +472,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
                      {playbackSpeed}x
                    </button>
                    
-                   {/* Replay */}
                    <button 
                      onClick={handleReplay}
                      className="p-2 rounded-full bg-white/10 border border-white/10 text-white hover:bg-white/20 transition-all"
@@ -426,7 +479,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                    </button>
 
-                   {/* Play/Pause */}
                    <button 
                      onClick={togglePause}
                      className="w-10 h-10 rounded-full bg-white text-indigo-600 flex items-center justify-center shadow-lg hover:scale-110 active:scale-90 transition-all"
@@ -438,7 +490,6 @@ export const TourGuideInterface: React.FC<TourGuideInterfaceProps> = ({ plan, on
                      )}
                    </button>
 
-                   {/* Close */}
                    <button 
                      onClick={stopAudio}
                      className="p-2 rounded-full text-white/40 hover:text-white transition-all ml-1"

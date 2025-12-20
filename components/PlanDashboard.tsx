@@ -33,6 +33,7 @@ interface PlanDashboardProps {
   briefings: Record<number, BriefingData>;
   isGeneratingBriefing: boolean;
   onGenerateBriefing: (day: number) => void;
+  hasStartedTour?: boolean;
 }
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -62,7 +63,8 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   onDeleteDraft,
   briefings,
   isGeneratingBriefing,
-  onGenerateBriefing
+  onGenerateBriefing,
+  hasStartedTour = false
 }) => {
   const [plan, setPlan] = useState<TripPlan>(initialPlan);
   const [activeDay, setActiveDay] = useState(1);
@@ -70,6 +72,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
   const [isCheckingLive, setIsCheckingLive] = useState(false);
+  const [isInsightVisible, setIsInsightVisible] = useState(true);
   const [liveStatuses, setLiveStatuses] = useState<Record<string, LiveStatus>>({});
   const [activeNotification, setActiveNotification] = useState<{title: string, msg: string} | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -77,13 +80,14 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   useEffect(() => {
     setPlan(initialPlan);
     setLiveStatuses({});
+    setIsInsightVisible(true); 
   }, [initialPlan.id]);
 
-  // When day changes, ensure briefing is ready in background
   useEffect(() => {
     if (!briefings[activeDay] && !isGeneratingBriefing) {
       onGenerateBriefing(activeDay);
     }
+    setIsInsightVisible(true);
   }, [activeDay, briefings]);
 
   useEffect(() => {
@@ -147,11 +151,8 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     setIsCheckingLive(true);
     try {
       const response = await sendMessageToGemini([], "Audit itinerary real-time status", plan, 'LIVE_CHECK', preferences, undefined, undefined, { day: activeDay } as any);
-      
-      // Resilient JSON extraction
       const jsonMatch = response.text.match(/\[[\s\S]*\]/);
       const textToParse = jsonMatch ? jsonMatch[0] : response.text;
-      
       try {
         const statuses: LiveStatus[] = JSON.parse(textToParse);
         const statusMap: Record<string, LiveStatus> = {};
@@ -159,7 +160,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           statusMap[s.id] = s;
         });
         setLiveStatuses(statusMap);
-        
         const alertCount = statuses.filter(s => s.status === 'closed' || s.status === 'alert').length;
         if (alertCount > 0) {
           setActiveNotification({
@@ -308,12 +308,32 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
              </button>
           </div>
 
-          <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-3xl flex gap-3 items-start">
-             <div className="text-xl">💡</div>
-             <p className="text-[11px] text-blue-800 leading-relaxed font-medium">
-               {isGeneratingBriefing ? "Refreshing daily weather & tips..." : (currentBriefing?.weather.advice || `Preparing highlights for Day ${activeDay}...`)}
-             </p>
-          </div>
+          {isInsightVisible && (
+            <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-3xl flex gap-3 items-start relative animate-fade-in group">
+               <button 
+                 onClick={() => setIsInsightVisible(false)} 
+                 className="absolute top-2 right-3 w-6 h-6 flex items-center justify-center text-blue-400 hover:text-blue-600 hover:bg-blue-100/50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                 title="Dismiss"
+               >
+                 ✕
+               </button>
+               <div className="text-xl shrink-0 mt-0.5">{currentBriefing?.weather.emoji || '💡'}</div>
+               <div className="flex-1 pr-4">
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Daily Snapshot</p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed font-medium">
+                    {isGeneratingBriefing ? (
+                      "Wise is checking today's conditions..."
+                    ) : currentBriefing ? (
+                      <span>
+                        <b className="text-blue-900">{currentBriefing.weather.condition} ({currentBriefing.weather.temp})</b>. {currentBriefing.weather.advice}
+                      </span>
+                    ) : (
+                      `Preparing highlights for your stay in ${plan.destination}...`
+                    )}
+                  </p>
+               </div>
+            </div>
+          )}
           
           {viewMode === 'list' ? (
              <div className="relative ml-2 space-y-6 pb-20">
@@ -362,7 +382,9 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
 
         <div className="p-4 bg-white border-t border-gray-50 flex gap-3">
           <button onClick={handleOpenBriefing} className="flex-1 py-4 px-6 rounded-2xl font-black text-xs text-orange-700 bg-orange-50 hover:bg-orange-100 transition-all shadow-sm">Briefing</button>
-          <button onClick={() => onStartTour(plan)} className="flex-[2] py-4 px-6 rounded-2xl font-black text-xs text-white bg-[#00a68c] hover:bg-[#008f79] transition-all shadow-lg shadow-teal-100">Start Tour</button>
+          <button onClick={() => onStartTour(plan)} className="flex-[2] py-4 px-6 rounded-2xl font-black text-xs text-white bg-[#00a68c] hover:bg-[#008f79] transition-all shadow-lg shadow-teal-100">
+            {hasStartedTour ? 'Resume Tour' : 'Start Tour'}
+          </button>
         </div>
       </div>
 

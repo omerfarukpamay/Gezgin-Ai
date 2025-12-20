@@ -6,7 +6,7 @@ import { PlanDashboard } from './components/PlanDashboard';
 import { TourGuideInterface } from './components/TourGuideInterface';
 import { UserProfileScreen } from './components/UserProfileScreen';
 import { SettingsScreen } from './components/SettingsScreen';
-import { AppPhase, TripPlan, UserPreferences, UserProfile, PastTrip, FavoritePlace, Activity, DigitalStamp, BriefingData } from './types';
+import { AppPhase, TripPlan, UserPreferences, UserProfile, PastTrip, FavoritePlace, Activity, DigitalStamp, BriefingData, Message } from './types';
 import { sendMessageToGemini } from './services/geminiService';
 
 function App() {
@@ -20,6 +20,10 @@ function App() {
   const [briefings, setBriefings] = useState<Record<number, BriefingData>>({});
   const [isGeneratingBriefing, setIsGeneratingBriefing] = useState(false);
   
+  // Tour State Persistence
+  const [tourHistoryMap, setTourHistoryMap] = useState<Record<string, Message[]>>({});
+  const [lastTourStopId, setLastTourStopId] = useState<string | null>(null);
+
   const [pastTrips, setPastTrips] = useState<PastTrip[]>([
     {
       id: 'trip_1',
@@ -98,6 +102,15 @@ function App() {
      }
   };
 
+  const handleActivityComplete = (activityId: string) => {
+    const updatedActivities = tripPlan.activities.map(a => 
+      a.id === activityId ? { ...a, status: 'completed' as const } : a
+    );
+    const updatedPlan = { ...tripPlan, activities: updatedActivities };
+    setTripPlan(updatedPlan);
+    setDrafts(prev => prev.map(d => d.id === updatedPlan.id ? updatedPlan : d));
+  };
+
   const handleLogin = (userData?: { name: string; email: string }) => {
     if (userData) setUserProfile(prev => ({ ...prev, name: userData.name, email: userData.email }));
     setPhase('ONBOARDING');
@@ -125,14 +138,16 @@ function App() {
 
   const handleOnboardingComplete = (prefs: UserPreferences) => {
     setPreferences(prefs);
-    setBriefings({}); // Clear old briefings
+    setBriefings({}); 
+    setTourHistoryMap({});
+    setLastTourStopId(null);
     
     let generatedActivities: Activity[] = [];
     if (prefs.city.toLowerCase().includes('chicago')) {
        generatedActivities = initialMockPlan.activities.map(a => ({...a}));
     } else {
        generatedActivities = [
-         { id: '1', day: 1, time: "14:00", activity: `Arrive in ${prefs.city}`, location: "Airport / Central Station", status: 'pending', type: 'general', imageUrl: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=300", priceLevel: 'Free', estimatedCost: 0 },
+         { id: '1', day: 1, time: "14:00", activity: `Arrive in ${prefs.city}`, location: "Airport / Central Station", status: 'pending', type: 'nature', imageUrl: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=300", priceLevel: 'Free', estimatedCost: 0 },
          { id: '2', day: 1, time: "16:00", activity: "Hotel Check-in & Refresh", location: "City Center", status: 'pending', type: 'general', imageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=300", priceLevel: '$$$', estimatedCost: 200 },
          { id: '3', day: 1, time: "19:00", activity: "Welcome Dinner", location: "Local Favorite", status: 'pending', type: 'food', imageUrl: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=300", priceLevel: '$$', estimatedCost: 60 }
        ];
@@ -167,7 +182,6 @@ function App() {
     setTripPlan(newPlan);
     setDrafts(prev => [newPlan, ...prev]);
 
-    // Pre-generate Day 1 Briefing so it's ready immediately
     fetchBriefing(newPlan, 1, prefs);
 
     setTimeout(() => {
@@ -178,10 +192,14 @@ function App() {
   const handleUpdatePlan = (updatedPlan: TripPlan) => {
     setTripPlan(updatedPlan);
     setDrafts(prev => prev.map(d => d.id === updatedPlan.id ? updatedPlan : d));
-    // Briefings might need to be refreshed if the plan changed significantly, 
-    // but for now we keep it simple to satisfy the speed request.
     if (preferences) fetchBriefing(updatedPlan, 1, preferences);
   };
+
+  const handleUpdateTourHistory = (stopId: string, msgs: Message[]) => {
+    setTourHistoryMap(prev => ({ ...prev, [stopId]: msgs }));
+  };
+
+  const hasTourStarted = tripPlan.activities.some(a => a.status === 'completed') || !!lastTourStopId;
 
   return (
     <div className="font-sans min-h-screen transition-colors duration-300">
@@ -208,11 +226,23 @@ function App() {
           briefings={briefings}
           isGeneratingBriefing={isGeneratingBriefing}
           onGenerateBriefing={(day) => fetchBriefing(tripPlan, day, preferences)}
+          hasStartedTour={hasTourStarted}
         />
       )}
       {phase === 'PROFILE' && <UserProfileScreen user={userProfile} pastTrips={pastTrips} favoritePlaces={favoritePlaces} onBack={() => setPhase('PLANNING')} onOpenSettings={() => setPhase('SETTINGS')} onLogout={() => setPhase('AUTH')} onUpdateAvatar={handleUpdateAvatar} />}
       {phase === 'SETTINGS' && <SettingsScreen onBack={() => setPhase('PROFILE')} isDarkMode={isDarkMode} onToggleDarkMode={() => setIsDarkMode(!isDarkMode)} />}
-      {phase === 'TOUR_GUIDE' && <TourGuideInterface plan={tripPlan} onExit={() => setPhase('PLANNING')} onStampCollected={handleStampCollected} />}
+      {phase === 'TOUR_GUIDE' && (
+        <TourGuideInterface 
+          plan={tripPlan} 
+          onExit={() => setPhase('PLANNING')} 
+          onStampCollected={handleStampCollected} 
+          onActivityComplete={handleActivityComplete}
+          historyMap={tourHistoryMap}
+          onUpdateHistory={handleUpdateTourHistory}
+          persistedStopId={lastTourStopId}
+          onUpdateStopId={setLastTourStopId}
+        />
+      )}
     </div>
   );
 }
