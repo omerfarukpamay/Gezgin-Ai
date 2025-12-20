@@ -56,6 +56,7 @@ export interface Message {
   role: 'user' | 'model';
   text: string;
   image?: string;
+  isAudio?: boolean; // New: To render as a "voice message"
   groundingMetadata?: GroundingMetadata;
   timestamp: Date;
 }

@@ -30,6 +30,9 @@ interface PlanDashboardProps {
   onLoadDraft: (plan: TripPlan) => void;
   onUpdatePlan: (plan: TripPlan) => void;
   onDeleteDraft: (planId: string) => void;
+  briefings: Record<number, BriefingData>;
+  isGeneratingBriefing: boolean;
+  onGenerateBriefing: (day: number) => void;
 }
 
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -56,15 +59,16 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   drafts,
   onLoadDraft,
   onUpdatePlan,
-  onDeleteDraft
+  onDeleteDraft,
+  briefings,
+  isGeneratingBriefing,
+  onGenerateBriefing
 }) => {
   const [plan, setPlan] = useState<TripPlan>(initialPlan);
   const [activeDay, setActiveDay] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list'); 
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
-  const [briefingData, setBriefingData] = useState<BriefingData | null>(null);
-  const [isGeneratingBriefing, setIsGeneratingBriefing] = useState(false);
   const [isCheckingLive, setIsCheckingLive] = useState(false);
   const [liveStatuses, setLiveStatuses] = useState<Record<string, LiveStatus>>({});
   const [activeNotification, setActiveNotification] = useState<{title: string, msg: string} | null>(null);
@@ -72,9 +76,15 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
 
   useEffect(() => {
     setPlan(initialPlan);
-    setBriefingData(null); 
     setLiveStatuses({});
   }, [initialPlan.id]);
+
+  // When day changes, ensure briefing is ready in background
+  useEffect(() => {
+    if (!briefings[activeDay] && !isGeneratingBriefing) {
+      onGenerateBriefing(activeDay);
+    }
+  }, [activeDay, briefings]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -136,21 +146,29 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     if (isCheckingLive) return;
     setIsCheckingLive(true);
     try {
-      const response = await sendMessageToGemini([], "Audit the itinerary status", plan, 'LIVE_CHECK', preferences, undefined, undefined, { day: activeDay } as any);
-      const text = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const statuses: LiveStatus[] = JSON.parse(text);
-      const statusMap: Record<string, LiveStatus> = {};
-      statuses.forEach(s => {
-        statusMap[s.id] = s;
-      });
-      setLiveStatuses(statusMap);
+      const response = await sendMessageToGemini([], "Audit itinerary real-time status", plan, 'LIVE_CHECK', preferences, undefined, undefined, { day: activeDay } as any);
       
-      const alertCount = statuses.filter(s => s.status === 'closed' || s.status === 'alert').length;
-      if (alertCount > 0) {
-        setActiveNotification({
-          title: "Live Update",
-          msg: `We found ${alertCount} items needing attention in today's plan.`
+      // Resilient JSON extraction
+      const jsonMatch = response.text.match(/\[[\s\S]*\]/);
+      const textToParse = jsonMatch ? jsonMatch[0] : response.text;
+      
+      try {
+        const statuses: LiveStatus[] = JSON.parse(textToParse);
+        const statusMap: Record<string, LiveStatus> = {};
+        statuses.forEach(s => {
+          statusMap[s.id] = s;
         });
+        setLiveStatuses(statusMap);
+        
+        const alertCount = statuses.filter(s => s.status === 'closed' || s.status === 'alert').length;
+        if (alertCount > 0) {
+          setActiveNotification({
+            title: "Live Update",
+            msg: `We found ${alertCount} items needing attention in today's plan.`
+          });
+        }
+      } catch (parseError) {
+        console.warn("Live check parse error:", textToParse);
       }
     } catch (e) {
       console.error("Live Check failed:", e);
@@ -159,18 +177,10 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     }
   };
 
-  const handleGetBriefing = async () => {
+  const handleOpenBriefing = () => {
     setIsBriefingOpen(true);
-    if (briefingData) return; 
-    setIsGeneratingBriefing(true);
-    try {
-      const response = await sendMessageToGemini([], "Generate ultra-brief daily prep", plan, 'BRIEFING', preferences);
-      let text = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-      setBriefingData(JSON.parse(text));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGeneratingBriefing(false);
+    if (!briefings[activeDay]) {
+      onGenerateBriefing(activeDay);
     }
   };
 
@@ -186,10 +196,11 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     window.open(url, '_blank');
   };
 
+  const currentBriefing = briefings[activeDay];
+
   return (
     <div className="h-screen bg-gray-100 flex flex-col md:flex-row p-4 gap-4 overflow-hidden relative">
       
-      {/* FLOATING NOTIFICATION */}
       {activeNotification && (
         <div className="absolute bottom-6 right-6 z-[100] w-80 animate-slide-up">
            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-indigo-100 p-4 flex gap-4 relative">
@@ -206,10 +217,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
         </div>
       )}
 
-      {/* LEFT SIDEBAR (Itinerary) */}
       <div className="w-full md:w-1/3 bg-white rounded-3xl shadow-xl flex flex-col overflow-hidden border border-gray-100 relative">
-        
-        {/* DRAFTS OVERLAY */}
         {isDraftsOpen && (
           <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-md flex flex-col p-6 animate-fade-in">
              <div className="flex justify-between items-center mb-6">
@@ -239,7 +247,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           </div>
         )}
 
-        {/* Header */}
         <div className="p-4 bg-white border-b border-gray-50">
           <div className="flex items-center justify-between mb-4">
             <div className="flex gap-2">
@@ -275,7 +282,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           </div>
 
           <div className="flex items-center justify-between text-[11px] font-bold text-gray-600 px-2 py-2 bg-gray-50/50 rounded-xl">
-             <div className="flex items-center gap-1.5"><span className="text-amber-500 text-base">🏃</span><span>{totalDayDistance.toFixed(1)} mi</span></div>
+             <div className="flex items-center gap-1.5"><span className="text-amber-500 text-base">🏃</span><span>{totalDayDistance} mi</span></div>
              <div className="h-4 w-px bg-gray-200"></div>
              <div className="flex items-center gap-1.5"><span className="text-amber-500 text-base">💰</span><span>~${estimatedDayBudget}</span></div>
              <div className="h-4 w-px bg-gray-200"></div>
@@ -283,7 +290,6 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto bg-white p-4 space-y-4 relative z-0">
           <div className="flex justify-end mb-2">
              <button 
@@ -305,22 +311,15 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-3xl flex gap-3 items-start">
              <div className="text-xl">💡</div>
              <p className="text-[11px] text-blue-800 leading-relaxed font-medium">
-               Tuesday might be windy in {plan.destination} (54°F). I recommend a light jacket.
+               {isGeneratingBriefing ? "Refreshing daily weather & tips..." : (currentBriefing?.weather.advice || `Preparing highlights for Day ${activeDay}...`)}
              </p>
           </div>
           
           {viewMode === 'list' ? (
              <div className="relative ml-2 space-y-6 pb-20">
                 <div className="absolute left-2.5 top-8 bottom-8 w-0.5 border-l-2 border-dashed border-gray-200"></div>
-                
-                {filteredActivities.map((item, index) => {
+                {filteredActivities.map((item) => {
                   const liveStatus = liveStatuses[item.id];
-                  let distanceToNext = null;
-                  if (index < filteredActivities.length - 1) {
-                    const nextItem = filteredActivities[index + 1];
-                    if (item.lat && nextItem.lat) distanceToNext = calculateDistance(item.lat, item.lng!, nextItem.lat, nextItem.lng!);
-                  }
-                  
                   return (
                     <div key={item.id} className="relative pl-10 animate-fade-in">
                       <div className={`absolute left-0 top-10 w-6 h-6 rounded-full border-4 border-white shadow-md z-10 ${
@@ -328,46 +327,27 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                         liveStatus?.status === 'busy' ? 'bg-orange-400' :
                         item.status === 'booked' ? 'bg-green-400' : 'bg-indigo-400'
                       }`}></div>
-                      
                       <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm flex overflow-hidden min-h-[140px] hover:shadow-md transition-all group">
                         <div className="w-1/3 relative shrink-0 overflow-hidden">
                            <img src={item.imageUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                           <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[9px] font-black px-2 py-0.5 rounded-lg z-10">
-                              {item.time}
-                           </div>
+                           <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[9px] font-black px-2 py-0.5 rounded-lg z-10">{item.time}</div>
                         </div>
                         <div className="w-2/3 p-4 flex flex-col">
                            <div className="flex justify-between items-start mb-1">
                               <div className="flex gap-2">
                                  <span className="text-[9px] font-black uppercase text-indigo-400 tracking-wider">{item.type}</span>
-                                 {liveStatus && (
-                                   <span className={`text-[9px] font-black uppercase px-1.5 rounded ${
-                                     liveStatus.status === 'open' ? 'text-green-600 bg-green-50' : 
-                                     liveStatus.status === 'busy' ? 'text-orange-600 bg-orange-50' : 
-                                     'text-red-600 bg-red-50'
-                                   }`}>
-                                     {liveStatus.status}
-                                   </span>
-                                 )}
+                                 {liveStatus && <span className={`text-[9px] font-black uppercase px-1.5 rounded ${liveStatus.status === 'open' ? 'text-green-600 bg-green-50' : liveStatus.status === 'busy' ? 'text-orange-600 bg-orange-50' : 'text-red-600 bg-red-50'}`}>{liveStatus.status}</span>}
                               </div>
                               <button onClick={() => removeActivity(item.id)} className="text-gray-300 hover:text-red-500 transition-colors">✕</button>
                            </div>
                            <h3 className="font-bold text-sm text-gray-800 line-clamp-2 leading-tight mb-0.5">{item.activity}</h3>
                            <p className="text-[10px] text-gray-400 mb-1">{item.location}</p>
-                           
-                           {liveStatus && (
-                             <p className="text-[9px] font-bold text-indigo-500 italic mb-3">"{liveStatus.message}"</p>
-                           )}
-
+                           {liveStatus && <p className="text-[9px] font-bold text-indigo-500 italic mb-3">"{liveStatus.message}"</p>}
                            <div className="mt-auto flex gap-2">
                               {item.bookingUrl && (
-                                 <button onClick={() => window.open(item.bookingUrl, '_blank')} className="flex-1 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-xl border border-blue-100 flex items-center justify-center gap-1 transition-all hover:bg-blue-100">
-                                    Book <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" /><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" /></svg>
-                                 </button>
+                                 <button onClick={() => window.open(item.bookingUrl, '_blank')} className="flex-1 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black rounded-xl border border-blue-100 flex items-center justify-center gap-1 transition-all hover:bg-blue-100">Book <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" /><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" /></svg></button>
                               )}
-                              <button onClick={() => openTransit(item)} className="flex-1 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-xl border border-indigo-100 flex items-center justify-center gap-1 transition-all hover:bg-indigo-100">
-                                 🗺️ Transit
-                              </button>
+                              <button onClick={() => openTransit(item)} className="flex-1 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-xl border border-indigo-100 flex items-center justify-center gap-1 transition-all hover:bg-indigo-100">🗺️ Transit</button>
                            </div>
                         </div>
                       </div>
@@ -380,47 +360,80 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           )}
         </div>
 
-        {/* Bottom Actions */}
         <div className="p-4 bg-white border-t border-gray-50 flex gap-3">
-          <button onClick={handleGetBriefing} className="flex-1 py-4 px-6 rounded-2xl font-black text-xs text-orange-700 bg-orange-50 hover:bg-orange-100 transition-all shadow-sm">Briefing</button>
+          <button onClick={handleOpenBriefing} className="flex-1 py-4 px-6 rounded-2xl font-black text-xs text-orange-700 bg-orange-50 hover:bg-orange-100 transition-all shadow-sm">Briefing</button>
           <button onClick={() => onStartTour(plan)} className="flex-[2] py-4 px-6 rounded-2xl font-black text-xs text-white bg-[#00a68c] hover:bg-[#008f79] transition-all shadow-lg shadow-teal-100">Start Tour</button>
         </div>
       </div>
 
-      {/* RIGHT SIDE (Chat Interface) */}
       <div className="flex-1 h-full">
         <ChatInterface tripPlan={plan} mode="PLANNER" preferences={preferences} onPlanUpdate={(updatedPlan) => { setPlan(updatedPlan); onUpdatePlan(updatedPlan); }} />
       </div>
 
-      {/* BRIEFING MODAL */}
       {isBriefingOpen && (
-        <div className="absolute inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden flex flex-col p-8 border border-gray-100">
-             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-black text-gray-900 tracking-tight">Daily Intel</h2>
-                <button onClick={() => setIsBriefingOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">✕</button>
-             </div>
-             {isGeneratingBriefing ? (
-                <div className="py-20 text-center space-y-4">
-                   <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                   <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Compiling briefing data...</p>
-                </div>
-             ) : briefingData && (
-                <div className="space-y-6">
-                   <div className="bg-indigo-50 p-6 rounded-3xl"><p className="text-sm font-medium text-indigo-900 leading-relaxed italic">"{briefingData.summary}"</p></div>
-                   <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-50 p-4 rounded-2xl flex items-center gap-3">
-                         <span className="text-3xl">{briefingData.weather.emoji}</span>
-                         <div><p className="text-sm font-bold text-gray-900">{briefingData.weather.temp}</p><p className="text-[10px] font-bold text-gray-400 uppercase">{briefingData.weather.condition}</p></div>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-2xl flex items-center gap-3">
-                         <span className="text-2xl">🧥</span>
-                         <div><p className="text-sm font-bold text-gray-900">{briefingData.dressCode.title}</p><p className="text-[10px] font-bold text-gray-400 uppercase">Dress Code</p></div>
-                      </div>
+        <div className="absolute inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-white/20">
+             <div className="p-6 pb-2">
+                <div className="flex items-center justify-between mb-4">
+                   <div className="flex gap-2">
+                      <span className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 flex items-center gap-1.5">
+                         {currentBriefing?.weather.emoji || '☀️'} {currentBriefing?.weather.temp || '--'}
+                      </span>
+                      <span className="bg-gray-50 text-gray-500 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-100">
+                         Day {activeDay}
+                      </span>
                    </div>
-                   <button onClick={() => setIsBriefingOpen(false)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100">Dismiss</button>
+                   <button onClick={() => setIsBriefingOpen(false)} className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-gray-500 transition-all text-xl">✕</button>
                 </div>
-             )}
+                <h2 className="text-2xl font-black text-gray-900 leading-none tracking-tight">
+                   {currentBriefing?.headline || "Your Daily Brief"}
+                </h2>
+             </div>
+
+             <div className="p-6 pt-2 space-y-6">
+                {(isGeneratingBriefing && !currentBriefing) ? (
+                   <div className="py-12 text-center space-y-4">
+                      <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Compiling summary...</p>
+                   </div>
+                ) : currentBriefing && (
+                   <div className="animate-slide-up space-y-6">
+                      <div className="space-y-1">
+                        <p className="text-gray-700 font-bold text-sm leading-relaxed border-l-4 border-indigo-500 pl-3">
+                           {currentBriefing.summary}
+                        </p>
+                      </div>
+                      <div className="bg-amber-50/40 p-5 rounded-2xl border border-amber-100/40">
+                         <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-3 flex items-center gap-2">🎒 Don't Forget</p>
+                         <div className="space-y-2">
+                            {currentBriefing.packing.map((item, i) => (
+                              <div key={i} className="text-[11px] font-bold text-amber-900 flex items-center gap-3">
+                                 <div className="w-4 h-4 rounded-md border border-amber-200 flex items-center justify-center text-[8px] bg-white">✓</div>
+                                 {item}
+                              </div>
+                            ))}
+                         </div>
+                      </div>
+                      <div className="space-y-3">
+                         <div className="flex gap-3 items-start">
+                            <span className="text-lg">🚇</span>
+                            <div>
+                               <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Quick Tip</p>
+                               <p className="text-[11px] text-gray-700 font-bold mt-0.5">{currentBriefing.transport}</p>
+                            </div>
+                         </div>
+                         <div className="flex gap-3 items-start">
+                            <span className="text-lg">⚠️</span>
+                            <div>
+                               <p className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Heads up</p>
+                               <p className="text-[11px] text-gray-700 font-bold mt-0.5">{currentBriefing.safetyTip}</p>
+                            </div>
+                         </div>
+                      </div>
+                      <button onClick={() => setIsBriefingOpen(false)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98] transition-all">Get Started</button>
+                   </div>
+                )}
+             </div>
           </div>
         </div>
       )}

@@ -4,7 +4,6 @@ import { Message, TripLocation, TripPlan, UserPreferences, Activity, ActivityTyp
 
 // CRITICAL: process.env.API_KEY is automatically injected.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MODEL_NAME = "gemini-2.5-flash";
 
 type AgentMode = 'PLANNER' | 'GUIDE' | 'BRIEFING' | 'LIVE_CHECK';
 
@@ -22,119 +21,60 @@ export const sendMessageToGemini = async (
   currentActivity?: Activity
 ): Promise<{ text: string; groundingMetadata?: any }> => {
   
+  // Use gemini-3-flash-preview for text/reasoning/search tasks
+  // Use gemini-2.5-flash for tasks requiring Google Maps grounding
+  let MODEL_NAME = (mode === 'PLANNER' || mode === 'GUIDE') ? "gemini-2.5-flash" : "gemini-3-flash-preview";
+  
   let systemInstruction = "";
   let responseMimeType: string | undefined = undefined;
 
   if (mode === 'PLANNER') {
     systemInstruction = `
       You are "GezginAI Planner". Task: Edit user's itinerary.
-      
-      User Preferences:
-      - Tempo: ${preferences?.tempo}
-      - Budget: ${preferences?.budget}
-      - Transport: ${preferences?.transport}
-      - Interests (Vibes): ${preferences?.interests?.join(', ') || "General"}
-      - Favorite Cuisines: ${preferences?.cuisines?.join(', ') || "No specific preference"}
-      - Exploration Style: ${preferences?.explorationStyle || "balanced"} (If 'hidden_gem', avoid tourist traps. If 'tourist', prioritize landmarks).
-      
       Current Plan:
-      ${tripContext.activities.map(a => `- ${a.time}: ${a.activity} (${a.status})`).join('\n')}
-
-      Duties:
-      1. Recommend based on interests AND exploration style.
-      2. Suggest dining options matching their cuisine list.
-      3. Suggest logical revisions.
-      4. Keep it professional yet friendly.
+      ${tripContext.activities.map(a => `- ${a.time}: ${a.activity}`).join('\n')}
+      Suggest logical revisions and keep it professional.
     `;
   } else if (mode === 'BRIEFING') {
      systemInstruction = `
-       Role: Elite Travel Logistics Officer.
-       Task: Create a ultra-short JSON briefing for tomorrow.
-       
+       Role: Smart Travel Concierge.
+       Task: Create a daily summary for the user.
        Destination: ${tripContext.destination}
-       Itinerary:
-       ${tripContext.activities.map(a => `- ${a.time}: ${a.activity}`).join('\n')}
+       Activities: ${tripContext.activities.map(a => a.activity).join(', ')}
 
-       You MUST return a JSON object. EVERY text field must be EXACTLY one short sentence.
+       Instructions:
+       Return ONLY raw JSON with these exact fields:
        {
-         "headline": "Short title (3-4 words)",
-         "summary": "ONE sentence overview of the day's vibe.",
+         "headline": "Short punchy title",
+         "summary": "2-3 sentences overview of the day's vibe.",
          "weather": {
-           "temp": "e.g. 18°C",
-           "condition": "e.g. Sunny",
-           "emoji": "☀️",
-           "advice": "ONE sentence weather tip."
-         },
-         "dressCode": {
-            "title": "Style name",
-            "description": "ONE sentence clothing advice."
+           "temp": "Temp in C",
+           "condition": "Condition",
+           "emoji": "One emoji",
+           "advice": "Short clothing advice"
          },
          "packing": ["Item 1", "Item 2", "Item 3"],
-         "transport": "ONE short logistics tip.",
-         "culturalTip": "ONE short cultural fact.",
-         "safetyTip": "ONE short safety alert."
+         "transport": "One short logistics hint.",
+         "safetyTip": "One short etiquette or safety warning."
        }
-
-       IMPORTANT: Return ONLY the raw JSON string.
      `;
+     responseMimeType = "application/json";
   } else if (mode === 'LIVE_CHECK') {
     systemInstruction = `
       You are a Real-Time Travel Auditor. 
-      Task: Verify the status of the following activities for today.
-      Use Google Search and Google Maps to check:
-      1. Are they currently open?
-      2. Are there any unusual crowds or wait times?
-      3. Is there any traffic or transit delay affecting the route?
-
-      Current Plan:
-      ${tripContext.activities.filter(a => a.day === (currentActivity?.day || 1)).map(a => `- ID: ${a.id}, Name: ${a.activity}, Location: ${a.location}`).join('\n')}
-
-      Return a JSON array of status objects:
+      Analyze if the activities in the user's plan are likely open, busy, or have issues today.
+      Current Activities for Day ${currentActivity?.day || 1}:
+      ${tripContext.activities.filter(a => (a.day || 1) === (currentActivity?.day || 1)).map(a => `- ID: ${a.id}, Name: ${a.activity}`).join('\n')}
+      
+      Return ONLY a raw JSON array of objects:
       [
-        {
-          "id": "activity_id",
-          "status": "open" | "busy" | "closed" | "alert",
-          "message": "Short 5-word status update",
-          "details": "One sentence detail"
-        }
+        {"id": "activity_id", "status": "open|busy|closed|alert", "message": "Short status update", "details": "Extra context"}
       ]
-      Only return the JSON.
     `;
+    // responseMimeType not used here because we use googleSearch tool below
   } else {
-    // TOUR GUIDE (WISE) MODE
-    const locationContext = currentActivity 
-      ? `Current Stop: ${currentActivity.activity}. Type: ${currentActivity.type || 'general'}`
-      : `Current Location: ${userLocation?.name || "Unknown"}`;
-
-    let personaInstruction = "You are Wise, an energetic and witty guide.";
-    const type = currentActivity?.type || 'general';
-
-    switch (type) {
-        case 'culture':
-            personaInstruction = "You are 'Wise the Curator'. Sophisticated and passionate about history.";
-            break;
-        case 'food':
-            personaInstruction = "You are 'Wise the Gourmand'. Obsessed with flavors and culinary secrets.";
-            break;
-        case 'nature':
-            personaInstruction = "You are 'Zen Wise'. Calm and observant.";
-            break;
-        case 'nightlife':
-            personaInstruction = "You are 'Party Wise'. Ultimate wingman/hype person.";
-            break;
-        default:
-            personaInstruction = "You are 'Wise', the user's witty best friend.";
-            break;
-    }
-
-    systemInstruction = `
-      ${personaInstruction}
-      ${locationContext}
-      RULES:
-      1. Stay in character!
-      2. Keep it SHORT (Max 2-3 sentences).
-      3. Use Google Search/Maps if needed.
-    `;
+    // GUIDE MODE
+    systemInstruction = `You are Wise, a witty tour guide. [GPS: ${userLocation?.lat}, ${userLocation?.lng}]`;
   }
 
   const contents = [];
@@ -158,24 +98,21 @@ export const sendMessageToGemini = async (
     const data = image.substring(image.indexOf(',') + 1);
     userParts.push({ inlineData: { mimeType, data } });
   }
-
-  let promptText = currentText;
-  if (userLocation && mode === 'GUIDE') {
-    promptText += `\n\n[GPS: ${userLocation.lat}, ${userLocation.lng}]`;
-  }
-  userParts.push({ text: promptText });
-
+  userParts.push({ text: currentText });
   contents.push({ role: "user", parts: userParts });
 
-  const tools: any[] = [{ googleSearch: {} }, { googleMaps: {} }];
+  let finalTools: any[] = [];
   let toolConfig = undefined;
-  
-  if (userLocation) {
-    toolConfig = {
-      retrievalConfig: {
-        latLng: { latitude: userLocation.lat, longitude: userLocation.lng }
-      }
-    };
+
+  if (mode === 'PLANNER' || mode === 'GUIDE') {
+    finalTools = [{ googleSearch: {} }, { googleMaps: {} }];
+    if (userLocation) {
+      toolConfig = {
+        retrievalConfig: { latLng: { latitude: userLocation.lat, longitude: userLocation.lng } }
+      };
+    }
+  } else if (mode === 'LIVE_CHECK') {
+    finalTools = [{ googleSearch: {} }];
   }
 
   try {
@@ -184,9 +121,10 @@ export const sendMessageToGemini = async (
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
-        tools: tools,
+        tools: finalTools.length > 0 ? finalTools : undefined,
         toolConfig: toolConfig,
-        responseMimeType: responseMimeType,
+        // responseMimeType is ONLY allowed when NO tools are used.
+        responseMimeType: (finalTools.length === 0 && (mode === 'BRIEFING' || mode === 'LIVE_CHECK')) ? responseMimeType : undefined,
       },
     });
 
@@ -197,6 +135,7 @@ export const sendMessageToGemini = async (
 
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return { text: "Connection error. Try again?" };
+    if (mode === 'LIVE_CHECK' || mode === 'BRIEFING') return { text: mode === 'LIVE_CHECK' ? "[]" : "{}" }; 
+    return { text: "Connection error." };
   }
 };
